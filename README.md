@@ -15,9 +15,15 @@
 
 See what your MCP server is actually doing.
 
+![greenlight tail, showing a real session: a normal call, a slow call flagged yellow, and a failed tool call flagged red](examples/demo.gif)
+
+Real trace, from an actual recorded session (`examples/demo-session.jsonl`),
+not staged text. Green for a clean success, yellow for a slow-but-fine
+call, red for a tool that actually failed.
+
 A transparent stdio proxy for the Model Context Protocol. Point it at
 your real server command instead of running that command directly, and
-it relays every byte exactly as before -- while recording every JSON-RPC
+it relays every byte exactly as before, while recording every JSON-RPC
 message to a structured log you can watch live or replay.
 
 Right now, if an MCP integration isn't working, you're debugging blind:
@@ -27,17 +33,11 @@ Greenlight exists to fix that.
 **Why not [MCP Inspector](https://github.com/modelcontextprotocol/inspector)?**
 Different job. Inspector is a UI you drive yourself to manually test a
 server in isolation. Greenlight sits transparently in the path of your
-*real* client -- Claude Desktop, Claude Code, whatever's actually
-running -- and records what really happened, not what you tried by
-hand. It also writes a durable log (`greenlight stats` exits non-zero on
+*real* client (Claude Desktop, Claude Code, whatever's actually
+running) and records what really happened, not what you tried by hand.
+It also writes a durable log (`greenlight stats` exits non-zero on
 failure, so it runs in CI) instead of a live session you have to be
 watching.
-
-![greenlight tail, showing a real session: a normal call, a slow call flagged yellow, and a failed tool call flagged red](examples/demo.gif)
-
-Real trace, from an actual recorded session (`examples/demo-session.jsonl`) --
-not staged text. Green for a clean success, yellow for a slow-but-fine
-call, red for a tool that actually failed.
 
 ## Install
 
