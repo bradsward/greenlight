@@ -12,6 +12,7 @@
 [![PyPI](https://img.shields.io/pypi/v/greenlight-mcp)](https://pypi.org/project/greenlight-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/greenlight-mcp)](https://pypi.org/project/greenlight-mcp/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![tests](https://github.com/bradsward/greenlight/actions/workflows/tests.yml/badge.svg)](https://github.com/bradsward/greenlight/actions/workflows/tests.yml)
 
 See what your MCP server is actually doing.
 
