@@ -11,6 +11,7 @@ from typing import Optional, Sequence
 
 from rich.console import Console
 
+from greenlight import __version__
 from greenlight.banner import print_banner
 from greenlight.http_proxy import run_http_proxy
 from greenlight.proxy import SESSIONS_DIR, run_proxy
@@ -34,6 +35,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="greenlight",
         description="See what your MCP server is actually doing.",
+    )
+    parser.add_argument(
+        "-V", "--version", action="version", version=f"greenlight {__version__}",
     )
     subparsers = parser.add_subparsers(dest="cmd", required=False)
 
