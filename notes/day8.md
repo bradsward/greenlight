@@ -42,10 +42,39 @@ looking for it, same as the CI badge and the demo GIF placement earlier.
 release, bumped again to 0.2.2 for it. A tag should mean what it says
 it means.
 
+## Property-based testing found a real bug, on the first run
+
+Added Hypothesis to fuzz consume_sse_buffer (the SSE event-boundary
+parser from issue #3) -- the property being checked: for any sequence
+of events and any way of chunking the resulting byte stream, every
+event is recovered, in order, uncorrupted. This directly generalizes
+the manual regression test for issue #3 (one specific chunk split)
+into an exhaustive-ish check across hundreds of generated splits per
+run.
+
+First run found a real bug that hand-written tests had missed:
+event.decode().splitlines() doesn't just split on \n and \r --
+Python's splitlines() also treats \x1c, \x1d, \x1e, \x85, U+2028,
+U+2029, \v, and \f as line boundaries. A payload containing a raw
+U+2028 (valid, unescaped, inside a JSON string) got silently mis-split,
+losing part of the payload, even though the actual \n-based event
+framing was already correct at that point. Fixed by splitting on the
+literal "\n" the function already normalizes everything to
+(str.split("\n")), not Python's broader definition of a line.
+
+Worth being honest about what this demonstrates and what it doesn't:
+this isn't "I am extremely rigorous and thought of everything." It's
+"a machine trying thousands of inputs found something a human checking
+a handful of cases by hand didn't," which is a real, specific
+argument for using this technique, not a character trait to claim
+credit for.
+
 ## Status
 
 v0.2.2 tagged and released on GitHub, CI green on both platforms at
-every step along the way. Not yet on PyPI -- needs the maintainer's
-token from their own terminal, same constraint as every release before
-this one. Built, twine-checked, and wheel-verified either way, so
-publishing it is one command whenever that happens.
+every step along the way. v0.2.3 (the splitlines fix + fuzz test) not
+yet tagged as of this note -- see the commit for exact status. None of
+0.2.1/0.2.2/0.2.3 are on PyPI yet -- needs the maintainer's token from
+their own terminal, same constraint as every release before this one.
+Built, twine-checked, and wheel-verified either way, so publishing is
+one command whenever that happens.

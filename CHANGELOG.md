@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.3
+
+- Fixed: SSE event parsing used `str.splitlines()` to find lines within
+  an event block, which treats several Unicode control/separator
+  characters as line boundaries in addition to `\n`/`\r` (`\x1c`,
+  `\x1d`, `\x1e`, `\x85`, `U+2028`, `U+2029`, `\v`, `\f`). A payload
+  legitimately containing one of those (a raw U+2028 is valid,
+  unescaped, inside a JSON string) got silently mis-split, losing part
+  of the payload. Found by property-based testing
+  (`tests/test_sse_buffer_fuzz.py`, Hypothesis), not by hand. Fixed by
+  splitting on the literal `\n` the parser already normalizes
+  everything to.
+
 ## 0.2.2
 
 - Added `greenlight --version` / `-V`. Standard CLI convention that

@@ -180,12 +180,24 @@ def consume_sse_buffer(buffer: bytes, chunk: bytes) -> tuple[list[str], bytes]:
     chunk's replace() call only sees its own bytes. Fixed by
     re-normalizing the whole accumulated buffer (previous tail + new
     chunk) every call, not just the new chunk, so a boundary-split
-    \\r\\n always ends up adjacent before the check runs."""
+    \\r\\n always ends up adjacent before the check runs.
+
+    Found by property-based testing, not by hand: splitting each event
+    block into lines with str.splitlines() is wrong, because Python's
+    splitlines() treats far more characters as line boundaries than
+    \\n -- \\x1c, \\x1d, \\x1e, \\x85, \\u2028, \\u2029, \\v, \\f are all
+    "lines" to splitlines() too. A payload legitimately containing one
+    of those (a raw U+2028 is valid, unescaped, inside a JSON string)
+    got silently split in the wrong place, losing part of the payload,
+    even though the actual \\n-based event framing was already correct
+    by this point. Fixed by splitting on the literal "\\n" this function
+    already normalized everything to, not on Python's broader notion of
+    a line boundary -- str.split("\\n"), not str.splitlines()."""
     buffer = (buffer + chunk).replace(b"\r\n", b"\n")
     events: list[str] = []
     while b"\n\n" in buffer:
         event, buffer = buffer.split(b"\n\n", 1)
-        for line in event.decode("utf-8", errors="replace").splitlines():
+        for line in event.decode("utf-8", errors="replace").split("\n"):
             if line.startswith("data:"):
                 events.append(line[len("data:"):].strip())
     return events, buffer

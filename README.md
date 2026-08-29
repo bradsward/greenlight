@@ -135,6 +135,10 @@ parsing.
       any failure, transport or tool-level)
 - [x] Streamable HTTP transport (`greenlight run --http <url>`),
       validated end-to-end against a real HTTP+SSE server, not just stdio
+- [x] Property-based tested (Hypothesis) against arbitrary chunking of
+      the SSE stream -- found and fixed a real Unicode line-boundary bug
+      (`str.splitlines()` treats more than `\n`/`\r` as a line break)
+      that hand-written test cases hadn't caught
 
 ## Notes
 
