@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed: `--http` mode crashed with an unhandled exception when the
+  target server was unreachable, leaving the client with a dropped
+  connection instead of a response. Now returns a clean 502 with a
+  JSON-RPC error body, logged as a new `proxy_error` entry type that
+  `tail` and `stats` both handle.
+- Fixed: SSE event parsing could miss an event if its `\r\n` boundary
+  landed exactly across two chunk reads. Bytes were still relayed to
+  the client correctly either way; only the logged trace was affected.
+- Fixed: the session log's file write wasn't locked against concurrent
+  writers. Only matters for `--http` mode, where multiple real client
+  connections can call into the logger at once (the stdio proxy only
+  ever has one caller). No corruption was actually reproduced, but the
+  gap was real and the fix is free.
+
 ## 0.2.0
 
 - `greenlight run --http <url>` -- proxy a remote Streamable HTTP MCP

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "greenlight-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "See what your MCP server is actually doing -- a transparent stdio/HTTP proxy and live trace viewer for the Model Context Protocol."
 readme = "README.md"
 license = { text = "MIT" }
