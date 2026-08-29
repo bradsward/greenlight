@@ -44,7 +44,29 @@ snapshot assumption that didn't fit a standing-process architecture) --
 different bug, same lesson: a test's own setup code can be the thing
 that's wrong, not just the code under test.
 
+## A gap closed on reasoning, not on a reproduced failure (worth being honest about the difference)
+
+Went looking for the next real gap instead of stopping at "issues #2
+and #3 are closed." The stdio proxy only ever has one caller writing to
+the session log. The HTTP proxy uses ThreadingHTTPServer, so multiple
+real client connections can call ProxySession.record() concurrently --
+and _write() had no lock around the shared log file handle, only
+self._lock protecting the _pending dict.
+
+Fired 60 concurrent requests across 20 threads at the HTTP proxy to
+check for actual corruption. Didn't find any -- 0 malformed lines. That
+matters: I'm not claiming this was a reproduced bug the way #2 and #3
+were. The file's opened with buffering=1 (line-buffered), so every
+write triggers a real flush syscall, and Python can release the GIL
+during a blocking syscall, which is exactly the kind of window a race
+like this needs -- I just didn't hit it in one test run on a fast local
+machine. Added the lock anyway, since it's one line, free, and closes a
+real architectural gap regardless of whether today's test happened to
+trigger it. Recorded as "fixed preventively," not "fixed a confirmed
+bug" -- those are different claims and worth keeping distinct rather
+than dressing up reasoning as a reproduction.
+
 ## Status
 
-Both issues closed. Full suite (6 test files now) passes locally and in
-CI, both platforms.
+Both issues closed, plus the concurrency lock. Full suite (6 test files)
+passes locally and in CI, both platforms, before and after the lock.

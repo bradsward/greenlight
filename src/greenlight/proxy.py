@@ -119,8 +119,23 @@ class ProxySession:
         self._write(entry)
 
     def _write(self, entry: dict) -> None:
-        self._log_file.write(json.dumps(entry) + "\n")
-        self._log_file.flush()
+        # Locked, unlike the rest of this class's opportunistic locking
+        # (self._lock elsewhere only guards the _pending dict). The
+        # stdio proxy only ever has one caller for this. The HTTP proxy
+        # uses ThreadingHTTPServer, so multiple real client connections
+        # can call record() concurrently, and this is a shared file
+        # handle with buffering=1 (line-buffered), meaning every call
+        # here triggers an actual flush syscall -- and Python can
+        # release the GIL during a blocking syscall, letting another
+        # thread's write interleave. Fired 60 concurrent requests across
+        # 20 threads at the HTTP proxy and didn't reproduce corruption,
+        # but "didn't reproduce it in one run" isn't the same as "can't
+        # happen" for a race this specific -- the fix is one line and
+        # free, no reason to leave a real architectural gap open just
+        # because it didn't manifest today.
+        with self._lock:
+            self._log_file.write(json.dumps(entry) + "\n")
+            self._log_file.flush()
 
     def close(self) -> None:
         self._log_file.close()
