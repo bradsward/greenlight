@@ -31,3 +31,4 @@ jobs:
       - run: python tests/test_npx_server.py
       - run: python tests/test_stats.py
       - run: python tests/test_http_proxy.py
+      - run: python tests/test_http_proxy_edge_cases.py

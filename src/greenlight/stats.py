@@ -19,6 +19,10 @@ def compute_stats(path: Path) -> dict:
     results = [e for e in entries if e.get("type") == "result"]
     transport_errors = [e for e in entries if e.get("type") == "error"]
     tool_errors = [e for e in results if e.get("tool_error")]
+    # Distinct from transport_errors: the target never responded at all
+    # (connection refused, unreachable), so there's no JSON-RPC error
+    # object to point at, just the proxy's own record of the failure.
+    proxy_errors = [e for e in entries if e.get("type") == "proxy_error"]
     unparsed = [e for e in entries if not e.get("parsed", True)]
 
     latencies = [e["latency_ms"] for e in results if "latency_ms" in e]
@@ -36,6 +40,7 @@ def compute_stats(path: Path) -> dict:
         "results": len(results),
         "transport_errors": len(transport_errors),
         "tool_errors": len(tool_errors),
+        "proxy_errors": len(proxy_errors),
         "unparsed_lines": len(unparsed),
         "latency_ms": {
             "min": round(min(latencies), 2) if latencies else None,
@@ -46,7 +51,7 @@ def compute_stats(path: Path) -> dict:
             method: {"count": len(lats), "median_ms": round(median(lats), 2)}
             for method, lats in sorted(by_method.items())
         },
-        "failed": bool(transport_errors or tool_errors),
+        "failed": bool(transport_errors or tool_errors or proxy_errors),
     }
 
 
@@ -68,7 +73,8 @@ def format_stats(stats: dict, path: Path) -> str:
     lines.append("")
     if stats["failed"]:
         lines.append(f"  FAILED -- {stats['transport_errors']} transport error(s), "
-                      f"{stats['tool_errors']} tool error(s)")
+                      f"{stats['tool_errors']} tool error(s), "
+                      f"{stats['proxy_errors']} proxy error(s, target unreachable)")
     else:
         lines.append("  no failures")
 

@@ -101,6 +101,23 @@ class ProxySession:
 
         self._write(entry)
 
+    def record_proxy_error(self, message: str) -> None:
+        """For failures where no JSON-RPC response ever came back at all
+        (target unreachable, connection refused, timed out) -- distinct
+        from a transport-level JSON-RPC error (the target DID respond,
+        just with an error object) and from a tool_error (the target
+        responded, the tool itself failed). This is "nothing came back",
+        which is a different failure mode the proxy has to originate
+        itself, not just relay."""
+        entry = {
+            "ts": time.time(),
+            "direction": "server->client",
+            "parsed": True,
+            "type": "proxy_error",
+            "error": {"message": message},
+        }
+        self._write(entry)
+
     def _write(self, entry: dict) -> None:
         self._log_file.write(json.dumps(entry) + "\n")
         self._log_file.flush()

@@ -20,6 +20,7 @@ that's not a reason to make it a runtime dependency of the proxy itself.
 """
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -80,6 +81,29 @@ def _make_handler(target_url: str, session: ProxySession) -> type:
                     self.wfile.write(payload)
                     session.record("server->client", payload.decode("utf-8", errors="replace"))
                 return
+            except urllib.error.URLError as e:
+                # Target unreachable (connection refused, DNS failure,
+                # timeout) -- HTTPError is actually a URLError subclass,
+                # so this only fires for the connection-level case, not
+                # the "target responded with an HTTP error" case above.
+                # Confirmed by actually pointing the proxy at a dead
+                # port: without this, the exception propagates out of
+                # the handler, the client gets a dropped connection with
+                # no status line at all, and a traceback lands on
+                # stderr. Send something the client can actually parse
+                # instead.
+                message = f"greenlight: target unreachable: {e.reason}"
+                session.record_proxy_error(message)
+                body = json.dumps({
+                    "jsonrpc": "2.0", "id": None,
+                    "error": {"code": -32000, "message": message},
+                }).encode("utf-8")
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
 
             with resp:
                 self.send_response(resp.status)
@@ -116,20 +140,11 @@ def _make_handler(target_url: str, session: ProxySession) -> type:
             streaming, not buffered-then-sent), while also accumulating
             into an event buffer so each complete `data: ...` line gets
             logged -- same information a stdio line gives the logger,
-            just framed differently over HTTP."""
-            # Found by testing against a real server, not assumed: SSE
-            # events here are \r\n\r\n-terminated. \r\n\r\n does NOT
-            # contain the substring "\n\n" (the \r sits between the two
-            # \n bytes) -- a naive b"\n\n" check silently never matches,
-            # so nothing gets logged even though the raw bytes are
-            # forwarded to the client just fine (relay and logging are
-            # independent here; only logging was broken). Normalizing
-            # CRLF to LF before searching handles \n\n, \r\n\r\n, and
-            # mixed conventions with one check. Known minor gap: a \r\n
-            # split exactly across two chunk-read boundaries won't be
-            # normalized (each chunk is normalized independently) --
-            # rare at a 256-byte read size, not worth a stateful
-            # cross-chunk normalizer for a debugging tool.
+            just framed differently over HTTP. The actual buffering
+            logic is a standalone function (consume_sse_buffer below),
+            kept separate from the socket so it can be tested without a
+            real connection -- that's exactly what had the CRLF
+            chunk-boundary bug."""
             buffer = b""
             while True:
                 chunk = resp.read(256)
@@ -137,14 +152,43 @@ def _make_handler(target_url: str, session: ProxySession) -> type:
                     break
                 self.wfile.write(chunk)
                 self.wfile.flush()
-                buffer += chunk.replace(b"\r\n", b"\n")
-                while b"\n\n" in buffer:
-                    event, buffer = buffer.split(b"\n\n", 1)
-                    for line in event.decode("utf-8", errors="replace").splitlines():
-                        if line.startswith("data:"):
-                            session.record("server->client", line[len("data:"):].strip())
+                events, buffer = consume_sse_buffer(buffer, chunk)
+                for payload in events:
+                    session.record("server->client", payload)
 
     return ProxyHandler
+
+
+def consume_sse_buffer(buffer: bytes, chunk: bytes) -> tuple[list[str], bytes]:
+    """Given the unconsumed tail from the previous read and a newly
+    read chunk, return the data: payloads of any complete SSE events
+    found, plus the new unconsumed tail.
+
+    Found by testing against a real server, not assumed: SSE events
+    there are \\r\\n\\r\\n-terminated. \\r\\n\\r\\n does NOT contain the
+    substring "\\n\\n" (the \\r sits between the two \\n bytes) -- a
+    naive b"\\n\\n" check silently never matches, so nothing gets
+    logged even though the raw bytes are forwarded to the client just
+    fine (relay and logging are independent; only logging was broken).
+    Normalizing CRLF to LF before searching handles \\n\\n, \\r\\n\\r\\n,
+    and mixed conventions with one check.
+
+    Normalizing had its own bug: an earlier version normalized each
+    256-byte chunk independently before appending to the buffer, so a
+    \\r\\n split exactly across a chunk boundary (\\r at the end of one
+    read, \\n at the start of the next) never got joined -- each
+    chunk's replace() call only sees its own bytes. Fixed by
+    re-normalizing the whole accumulated buffer (previous tail + new
+    chunk) every call, not just the new chunk, so a boundary-split
+    \\r\\n always ends up adjacent before the check runs."""
+    buffer = (buffer + chunk).replace(b"\r\n", b"\n")
+    events: list[str] = []
+    while b"\n\n" in buffer:
+        event, buffer = buffer.split(b"\n\n", 1)
+        for line in event.decode("utf-8", errors="replace").splitlines():
+            if line.startswith("data:"):
+                events.append(line[len("data:"):].strip())
+    return events, buffer
 
 
 def run_http_proxy(target_url: str, port: int = 8808, session_name: Optional[str] = None) -> int:
