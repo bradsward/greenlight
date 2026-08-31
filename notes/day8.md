@@ -69,12 +69,49 @@ a handful of cases by hand didn't," which is a real, specific
 argument for using this technique, not a character trait to claim
 credit for.
 
+## Extending the same fuzzing to the other proxy path
+
+The SSE fuzz test only covered the HTTP proxy's event-boundary parser.
+The stdio proxy's ProxySession.record() has its own JSON-handling logic
+and had never been fuzzed. Worth checking, since json.loads() succeeds
+for any valid JSON value, not just objects -- a bare "null", "42",
+"true", or "[1,2,3]" all parse fine, and record() immediately called
+msg.get("id") on the result, assuming a dict.
+
+Reproduced for real before fixing, same as always: sent a literal
+`null` POST body through the live HTTP proxy. It crashed the request
+handler with an unhandled AttributeError -- the client got a dropped
+connection, same failure shape as the original unreachable-target bug.
+Checked the stdio side too: its caller happens to wrap record() in a
+bare except, so there it doesn't crash the process, but the entry
+silently vanishes instead of being logged -- not the right behavior
+either, just a quieter wrong one.
+
+Fixed at the source (inside record() itself, not at each call site),
+so both the HTTP and stdio paths are protected by one fix instead of
+two. Covered two ways: an explicit test enumerating each non-dict JSON
+shape (7 cases), and a Hypothesis property generalizing to "record()
+must never raise for any string input, JSON or not" -- 300 generated
+examples, matching the same fuzzing discipline as the SSE parser.
+
+## Also: a real onboarding friction point, unrelated to any bug
+
+Noticed while thinking about what actually drives adoption, not just
+correctness: the README's usage example used a placeholder package
+name (`@some/mcp-server`). A visitor with curiosity but no MCP server
+of their own had no way to actually try Greenlight in the next 30
+seconds. Replaced the lead example with the real, public, official MCP
+reference server via npx -- verified it actually works standalone with
+zero configuration before putting it in the README, not just assumed
+it would.
+
 ## Status
 
 v0.2.2 tagged and released on GitHub, CI green on both platforms at
-every step along the way. v0.2.3 (the splitlines fix + fuzz test) not
-yet tagged as of this note -- see the commit for exact status. None of
-0.2.1/0.2.2/0.2.3 are on PyPI yet -- needs the maintainer's token from
-their own terminal, same constraint as every release before this one.
-Built, twine-checked, and wheel-verified either way, so publishing is
-one command whenever that happens.
+every step along the way. v0.2.3 (splitlines fix + SSE fuzz) and 0.2.4
+(record() crash fix + record() fuzz + README onboarding fix) -- see
+the commits for exact status of each. None of 0.2.1 through 0.2.4 are
+on PyPI yet -- needs the maintainer's token from their own terminal,
+same constraint as every release before this one. Built, twine-checked,
+and wheel-verified either way, so publishing is one command whenever
+that happens.

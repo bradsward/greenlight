@@ -33,3 +33,5 @@ jobs:
       - run: python tests/test_http_proxy.py
       - run: python tests/test_http_proxy_edge_cases.py
       - run: python tests/test_sse_buffer_fuzz.py
+      - run: python tests/test_record_non_dict_json.py
+      - run: python tests/test_record_fuzz.py

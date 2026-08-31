@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.4
+
+- Fixed: `json.loads()` succeeds for any valid JSON value, not just
+  objects -- a bare `null`, `42`, `true`, or `[1,2,3]` is valid JSON.
+  `ProxySession.record()` assumed a dict and crashed with
+  `AttributeError` on anything else. Reproduced for real: a literal
+  `null` POST body took down the HTTP proxy's request handler with an
+  unhandled exception (the stdio side happened to swallow it silently
+  instead of crashing, which isn't correct either -- the entry just
+  vanished). Fixed by treating non-dict JSON the same way invalid JSON
+  already is: logged as unparsed, not crashing, not silently dropped.
+  Covered by both an explicit test for each non-dict JSON shape and a
+  Hypothesis property (record() must never raise for any string input).
+- README now leads with a real, runnable example (the official MCP
+  reference server via npx) instead of a placeholder package name --
+  something to actually try in the next 30 seconds, not just look at.
+
 ## 0.2.3
 
 - Fixed: SSE event parsing used `str.splitlines()` to find lines within

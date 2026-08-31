@@ -52,9 +52,26 @@ Or from source:
 pip install -e .
 ```
 
-## Use it
+## Try it right now, no server of your own required
 
-Wherever you'd normally configure a server command, wrap it:
+```bash
+greenlight run -- npx -y @modelcontextprotocol/server-everything stdio
+```
+
+That's the official MCP reference server -- public, free, no config.
+In another terminal:
+
+```bash
+greenlight tail -f
+```
+
+Watch real tool calls come through live. Needs Node.js for the `npx`
+part; nothing else.
+
+## Use it for real
+
+Wherever you'd normally configure a server command, wrap it the same
+way:
 
 ```bash
 greenlight run -- npx -y @some/mcp-server
@@ -139,6 +156,9 @@ parsing.
       the SSE stream -- found and fixed a real Unicode line-boundary bug
       (`str.splitlines()` treats more than `\n`/`\r` as a line break)
       that hand-written test cases hadn't caught
+- [x] Fuzzed the JSON-RPC classifier too -- found and fixed a crash on
+      any valid-but-non-object JSON (`null`, `42`, `[1,2,3]`), which
+      `json.loads()` accepts but a dict-shaped assumption didn't handle
 
 ## Notes
 

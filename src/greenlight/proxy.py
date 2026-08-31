@@ -66,6 +66,24 @@ class ProxySession:
             self._write(entry)
             return
 
+        if not isinstance(msg, dict):
+            # json.loads succeeds for any valid JSON value, not just
+            # objects -- a bare "null", "42", "true", or "[1,2,3]" is
+            # valid JSON and parses fine, but msg.get(...) below would
+            # crash with AttributeError since none of those are dicts.
+            # Reproduced for real: a literal `null` POST body took down
+            # the HTTP proxy's request handler with an unhandled
+            # exception (the stdio side's caller happens to swallow
+            # exceptions from record(), so there it silently dropped the
+            # entry instead of crashing -- neither is the right
+            # behavior). Treated the same way invalid JSON already is:
+            # it's not a usable JSON-RPC message either way, logged as
+            # such rather than crashing or vanishing.
+            entry["parsed"] = False
+            entry["raw"] = line[:500]
+            self._write(entry)
+            return
+
         entry["parsed"] = True
         msg_id = msg.get("id")
         method = msg.get("method")
