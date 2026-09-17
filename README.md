@@ -14,6 +14,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![tests](https://github.com/bradsward/greenlight/actions/workflows/tests.yml/badge.svg)](https://github.com/bradsward/greenlight/actions/workflows/tests.yml)
 
+Listed in [awesome-mcp-devtools](https://github.com/Epistates/awesome-mcp-devtools#development-tools).
+
 See what your MCP server is actually doing.
 
 ![greenlight tail, showing a real session: a normal call, a slow call flagged yellow, and a failed tool call flagged red](examples/demo.gif)
