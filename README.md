@@ -72,6 +72,17 @@ part; nothing else.
 
 ## Use it for real
 
+Not sure how to wrap your actual server command? Check first:
+
+```bash
+greenlight wrap
+```
+
+Finds your real MCP client config (Claude Desktop, or a project-local
+`.mcp.json` for Claude Code) and prints exactly what each server entry
+would look like rewritten to run through Greenlight. Read-only -- it
+never touches the file, just shows you what to paste in yourself.
+
 Wherever you'd normally configure a server command, wrap it the same
 way:
 
@@ -165,6 +176,8 @@ parsing.
       `tail` and `stats` both surface the actual message MCP gave for
       the failure, pulled from the same `result.content` a client would
       show a user
+- [x] `greenlight wrap` -- finds your real Claude Desktop / Claude Code
+      config and shows exactly how to point it at Greenlight, read-only
 
 ## Notes
 

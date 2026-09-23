@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0
+
+- Added `greenlight wrap` -- finds your real MCP client config (Claude
+  Desktop, or a project-local `.mcp.json` for Claude Code) and prints
+  exactly what each server entry would look like rewritten to run
+  through Greenlight, so trying it on a real setup doesn't mean hand-
+  editing JSON and working out the wrapping syntax yourself. Strictly
+  read-only: it only prints suggestions, it never writes to the config
+  file. (Deliberately scoped that way -- writing to a file your actual
+  AI assistant depends on to start up is a different risk category than
+  anything else in this project, and it doesn't need write access to be
+  useful. See `notes/day11.md` for the tradeoffs behind that call.)
+  Resolves the command to the exact Python interpreter running
+  Greenlight rather than a bare `greenlight` on PATH, since Claude
+  Desktop on macOS launches outside a login shell and often can't see a
+  terminal's PATH -- a common, separate way MCP server commands
+  silently fail to start.
+
 ## 0.2.6
 
 - Fixed a CI-only test failure in 0.2.5's tool-error-message tests: they

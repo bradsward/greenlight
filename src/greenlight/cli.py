@@ -84,6 +84,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     stats_p.add_argument("--json", action="store_true", help="print machine-readable JSON instead")
 
+    wrap_p = subparsers.add_parser(
+        "wrap",
+        help="Show how to point your real MCP client config at Greenlight. Read-only -- "
+             "prints suggestions, never writes anything.",
+    )
+    wrap_p.add_argument(
+        "path", nargs="?", default=None,
+        help="a specific config file to check (defaults to searching known Claude Desktop / "
+             "Claude Code locations)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.cmd is None:
@@ -127,6 +138,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             print(format_stats(stats, path))
         return 1 if stats["failed"] else 0
+
+    if args.cmd == "wrap":
+        from greenlight.wrap import find_configs, format_suggestions, load_servers
+
+        paths = [Path(args.path)] if args.path else find_configs()
+        if not paths:
+            print("greenlight: no MCP client config found in the usual locations.", file=sys.stderr)
+            print("Pass one directly: greenlight wrap path/to/config.json", file=sys.stderr)
+            return 1
+
+        print("greenlight: read-only -- nothing on disk is changed. "
+              "Copy in whichever suggestions you want.\n")
+        exit_code = 0
+        for path in paths:
+            try:
+                servers = load_servers(path)
+            except ValueError as e:
+                print(f"greenlight: {e}", file=sys.stderr)
+                exit_code = 1
+                continue
+            print(format_suggestions(path, servers))
+            print()
+        return exit_code
 
     parser.error(f"unknown command {args.cmd!r}")
     return 2
