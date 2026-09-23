@@ -43,7 +43,9 @@ def _format_entry(entry: dict) -> tuple[str, str]:
     latency_str = f"{latency:>8.2f}ms" if latency is not None else " " * 10
 
     if entry.get("tool_error"):
-        return f"{timestamp}  {arrow}  {method:<24s} {latency_str}  FAILED (tool error)", "bold red"
+        message = entry.get("tool_error_message")
+        suffix = f": {message}" if message else ""
+        return f"{timestamp}  {arrow}  {method:<24s} {latency_str}  FAILED (tool error){suffix}", "bold red"
     if kind in ("error", "proxy_error"):
         message = entry.get("error", {}).get("message", "?")
         return f"{timestamp}  {arrow}  {method:<24s} {latency_str}  FAILED: {message}", "bold red"

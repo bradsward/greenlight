@@ -86,6 +86,14 @@ async def main() -> None:
     print(f"tool-error detection: ok (boom() correctly flagged as tool_error, "
           f"not confused with a transport error)")
 
+    # The tool-error result's own text explanation must survive into the
+    # log too, not just the isError flag -- that's the difference between
+    # "a call failed" and "a call failed, here's why" in `tail`/`stats`.
+    message = tool_errors[0].get("tool_error_message", "")
+    assert "this tool always fails, on purpose" in message, \
+        f"expected boom()'s real error text in the log, got {message!r}"
+    print(f"tool-error message captured: ok ({message!r})")
+
     print("\nALL CHECKS PASSED -- proxy is transparent and the log is accurate.")
 
 

@@ -27,6 +27,25 @@ from typing import Callable, Optional
 SESSIONS_DIR = Path.cwd() / "sessions"
 
 
+def _tool_error_text(result: dict) -> str:
+    """A tool-error result's `content` is a list of content blocks -- almost
+    always one or more {"type": "text", "text": "..."} items carrying the
+    actual explanation (e.g. "division by zero", an API's own error
+    message). Until now that text was thrown away and only the isError
+    flag was kept, so `tail` could say a call failed but never why.
+    Real example, from this project's own boom() fixture tool: 'Error
+    executing tool boom: this tool always fails, on purpose'."""
+    content = result.get("content")
+    if not isinstance(content, list):
+        return ""
+    parts = [
+        block["text"]
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str)
+    ]
+    return " ".join(parts)
+
+
 @dataclass
 class _PendingRequest:
     method: str
@@ -116,6 +135,9 @@ class ProxySession:
                 # own flag rather than being indistinguishable from a
                 # normal result.
                 entry["tool_error"] = True
+                text = _tool_error_text(msg["result"])
+                if text:
+                    entry["tool_error_message"] = text[:500]
 
         self._write(entry)
 

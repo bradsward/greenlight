@@ -25,6 +25,22 @@ def compute_stats(path: Path) -> dict:
     proxy_errors = [e for e in entries if e.get("type") == "proxy_error"]
     unparsed = [e for e in entries if not e.get("parsed", True)]
 
+    # The actual reasons behind a failure, not just the counts -- a
+    # transport error and a proxy error both carry a message already
+    # (msg["error"]["message"]), and a tool error now carries the text MCP
+    # itself gave for the failure (see proxy.py's _tool_error_text). Surfaced
+    # here so `greenlight stats` can tell you *why* a CI run failed without
+    # having to go dig through the full trace.
+    failure_messages = [
+        e["error"]["message"]
+        for e in transport_errors + proxy_errors
+        if e.get("error", {}).get("message")
+    ] + [
+        e["tool_error_message"]
+        for e in tool_errors
+        if e.get("tool_error_message")
+    ]
+
     latencies = [e["latency_ms"] for e in results if "latency_ms" in e]
 
     by_method: dict[str, list[float]] = {}
@@ -52,6 +68,7 @@ def compute_stats(path: Path) -> dict:
             for method, lats in sorted(by_method.items())
         },
         "failed": bool(transport_errors or tool_errors or proxy_errors),
+        "failure_messages": failure_messages,
     }
 
 
@@ -75,6 +92,8 @@ def format_stats(stats: dict, path: Path) -> str:
         lines.append(f"  FAILED -- {stats['transport_errors']} transport error(s), "
                       f"{stats['tool_errors']} tool error(s), "
                       f"{stats['proxy_errors']} proxy error(s, target unreachable)")
+        for msg in stats["failure_messages"][:5]:
+            lines.append(f"    - {msg}")
     else:
         lines.append("  no failures")
 

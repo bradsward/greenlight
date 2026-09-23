@@ -161,6 +161,10 @@ parsing.
 - [x] Fuzzed the JSON-RPC classifier too -- found and fixed a crash on
       any valid-but-non-object JSON (`null`, `42`, `[1,2,3]`), which
       `json.loads()` accepts but a dict-shaped assumption didn't handle
+- [x] Failed tool calls show their real error text, not just a red flag --
+      `tail` and `stats` both surface the actual message MCP gave for
+      the failure, pulled from the same `result.content` a client would
+      show a user
 
 ## Notes
 

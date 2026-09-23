@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.5
+
+- `tail` and `stats` now show *why* a tool call failed, not just that it
+  did. MCP tool-error results carry their own explanation in
+  `result.content` (the same text a client would show a user), but
+  `record()` was only keeping the `isError` flag and throwing that text
+  away -- so a failed call showed up as bare `FAILED (tool error)` with
+  no way to tell a division-by-zero from an auth failure without going
+  to find the raw log some other way. Now captured as
+  `tool_error_message` and surfaced in both: `tail` appends it to the
+  red trace line, and `stats`'s printed report lists up to 5 real
+  failure messages (transport, tool, and proxy errors alike) instead of
+  just counts, which matters most exactly when you need it most --
+  reading a failed CI run without re-driving the session.
+
 ## 0.2.4
 
 - Fixed: `json.loads()` succeeds for any valid JSON value, not just
