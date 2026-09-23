@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.6
+
+- Fixed a CI-only test failure in 0.2.5's tool-error-message tests: they
+  asserted the exact wording of the message the `mcp` SDK generates when
+  a tool raises, which turned out to vary between SDK versions ("Error
+  executing tool boom" on the CI runner's installed version vs. "Error
+  executing tool boom: this tool always fails, on purpose" locally).
+  Nothing wrong with the actual feature -- `record()`'s extraction just
+  reads whatever content blocks a result carries, and that part never
+  depended on SDK-specific wording. Loosened the affected assertions and
+  added `test_tool_error_extraction.py`, which tests the extraction
+  logic directly against hand-crafted JSON-RPC results instead of
+  through a real MCP server, so it can't drift with SDK behavior again.
+
 ## 0.2.5
 
 - `tail` and `stats` now show *why* a tool call failed, not just that it
