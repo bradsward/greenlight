@@ -2,12 +2,14 @@
 Read-only helper for pointing an existing MCP client config at Greenlight.
 
 Finds known MCP client config files (Claude Desktop, Claude Code's
-project-local .mcp.json) and, for each server entry, prints exactly what
-it would look like rewritten to run through `greenlight run` -- nothing
-here ever writes to disk. Copying a suggestion in is a manual, deliberate
-step, same as editing the config by hand, just without having to work out
-the wrapping syntax (and the exact command path to use so Claude Desktop
-can actually find it -- see the sys.executable choice below) yourself.
+project-local .mcp.json, Cursor, Windsurf -- all of which happen to share
+the same {"mcpServers": {...}} shape) and, for each server entry, prints
+exactly what it would look like rewritten to run through `greenlight run`
+-- nothing here ever writes to disk. Copying a suggestion in is a manual,
+deliberate step, same as editing the config by hand, just without having
+to work out the wrapping syntax (and the exact command path to use so a
+GUI-launched client can actually find it -- see the sys.executable choice
+below) yourself.
 """
 from __future__ import annotations
 
@@ -24,9 +26,12 @@ _GREENLIGHT_MARKER = "greenlight.cli"
 
 
 def known_config_locations() -> list[Path]:
-    """Well-known MCP client config file locations, OS-appropriate. Not
+    """Well-known, machine-global MCP client config file locations. Not
     every path returned here necessarily exists -- callers filter with
-    find_configs()."""
+    find_configs(). Project-local configs (Claude Code's .mcp.json,
+    Cursor's project-level .cursor/mcp.json) are handled separately in
+    find_configs(), since they're relative to a working directory rather
+    than fixed per machine."""
     locations: list[Path] = []
 
     if sys.platform == "win32":
@@ -42,19 +47,28 @@ def known_config_locations() -> list[Path]:
         # setups use this path anyway, only surfaced if it's actually there.
         locations.append(Path.home() / ".config" / "Claude" / "claude_desktop_config.json")
 
+    # Cursor and Windsurf both keep their global MCP config at a fixed
+    # path under the home directory on every OS (unlike Claude Desktop,
+    # which uses each platform's app-data convention).
+    locations.append(Path.home() / ".cursor" / "mcp.json")
+    locations.append(Path.home() / ".codeium" / "windsurf" / "mcp_config.json")
+
     return locations
 
 
 def find_configs(cwd: Optional[Path] = None, known: Optional[list[Path]] = None) -> list[Path]:
-    """Every known config location that actually exists on disk, plus a
-    project-local .mcp.json (Claude Code's project-scoped server config --
-    same {"mcpServers": {...}} shape) if this directory has one.
+    """Every known config location that actually exists on disk, plus
+    project-local configs relative to `cwd` -- Claude Code's .mcp.json and
+    Cursor's .cursor/mcp.json, both of which take precedence over the
+    global config for the same client when a project defines its own.
+    All of these happen to share the same {"mcpServers": {...}} shape.
 
     `known` overrides the OS-detected locations (known_config_locations())
     -- mainly so tests can run in isolation from whatever's actually
     installed on the machine running them."""
     cwd = cwd or Path.cwd()
-    candidates = (known if known is not None else known_config_locations()) + [cwd / ".mcp.json"]
+    project_local = [cwd / ".mcp.json", cwd / ".cursor" / "mcp.json"]
+    candidates = (known if known is not None else known_config_locations()) + project_local
 
     found: list[Path] = []
     seen: set[Path] = set()

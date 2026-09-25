@@ -20,6 +20,7 @@ from greenlight.wrap import (  # noqa: E402
     find_configs,
     format_suggestions,
     is_already_wrapped,
+    known_config_locations,
     load_servers,
     wrapped_entry,
 )
@@ -100,6 +101,29 @@ def test_find_configs_only_returns_files_that_exist() -> None:
     print("find_configs: ok (only reports files that actually exist)")
 
 
+def test_known_locations_include_cursor_and_windsurf() -> None:
+    # These two are the same on every OS (unlike Claude Desktop's
+    # per-platform app-data path), so no platform branching to isolate --
+    # just confirm both are actually offered as candidates.
+    locations = known_config_locations()
+    assert any(p.parts[-2:] == (".cursor", "mcp.json") for p in locations), locations
+    assert any(p.parts[-3:] == (".codeium", "windsurf", "mcp_config.json") for p in locations), locations
+    print("known_config_locations: ok (Cursor and Windsurf global paths included)")
+
+
+def test_find_configs_includes_project_local_cursor_config() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        cwd = Path(tmp)
+        cursor_dir = cwd / ".cursor"
+        cursor_dir.mkdir()
+        cursor_json = cursor_dir / "mcp.json"
+        cursor_json.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+
+        found = find_configs(cwd, known=[])
+        assert cursor_json.resolve() in [p.resolve() for p in found]
+    print("find_configs: ok (project-local .cursor/mcp.json detected)")
+
+
 def test_load_servers_reports_bad_json_clearly() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         bad = Path(tmp) / "broken.json"
@@ -126,5 +150,7 @@ if __name__ == "__main__":
     test_already_wrapped_detected_and_skipped()
     test_format_suggestions_never_touches_disk()
     test_find_configs_only_returns_files_that_exist()
+    test_known_locations_include_cursor_and_windsurf()
+    test_find_configs_includes_project_local_cursor_config()
     test_load_servers_reports_bad_json_clearly()
     print("\nALL CHECKS PASSED -- wrap is read-only and its suggestion logic is correct.")

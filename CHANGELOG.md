@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1
+
+- `greenlight wrap` now also checks Cursor (`~/.cursor/mcp.json` and a
+  project-local `.cursor/mcp.json`) and Windsurf
+  (`~/.codeium/windsurf/mcp_config.json`), not just Claude Desktop and
+  Claude Code. All four happen to use the same `{"mcpServers": {...}}`
+  config shape, so this was pure discovery-list expansion -- no change
+  to the actual rewriting logic, and still strictly read-only.
+
 ## 0.3.0
 
 - Added `greenlight wrap` -- finds your real MCP client config (Claude

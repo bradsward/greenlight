@@ -91,8 +91,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     wrap_p.add_argument(
         "path", nargs="?", default=None,
-        help="a specific config file to check (defaults to searching known Claude Desktop / "
-             "Claude Code locations)",
+        help="a specific config file to check (defaults to searching known Claude Desktop, "
+             "Claude Code, Cursor, and Windsurf locations)",
     )
 
     args = parser.parse_args(argv)
