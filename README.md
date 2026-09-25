@@ -139,6 +139,21 @@ greenlight run -- npx -y @some/mcp-server &
 greenlight stats || exit 1
 ```
 
+## Let an agent read the trace directly
+
+```bash
+pip install greenlight-mcp[serve]
+greenlight serve
+```
+
+Exposes this project's own session data as an MCP server. Add it to
+an agentic MCP client's own config (Claude Code, Cursor, anything
+MCP-capable) and it can call `get_failures` or `get_trace` on your last
+session directly -- the real error messages, not a paste of terminal
+output. Four tools: `list_sessions`, `get_session_stats`,
+`get_failures`, `get_trace`. Optional dependency -- the base install
+stays just `rich`.
+
 ## How it works
 
 `greenlight run` spawns your real server as a subprocess and sits
@@ -179,6 +194,10 @@ parsing.
 - [x] `greenlight wrap` -- finds your real Claude Desktop, Claude Code,
       Cursor, or Windsurf config and shows exactly how to point it at
       Greenlight, read-only
+- [x] `greenlight serve` -- exposes session/trace data as an MCP server
+      itself, so an agentic client can query real failure data directly
+      instead of a human relaying terminal output to it (optional dep,
+      base install unaffected -- verified against a clean venv)
 
 ## Notes
 

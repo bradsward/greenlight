@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0
+
+- Added `greenlight serve` -- exposes this project's own session/trace
+  data as an MCP server, so an agentic MCP client (Claude Code, Cursor,
+  anything MCP-capable) can query real trace data directly as a tool
+  call instead of a human relaying `tail`/`stats` terminal output back
+  into the conversation by hand. Four tools: `list_sessions`,
+  `get_session_stats`, `get_failures` (the actual failure messages,
+  most recent first -- transport, tool, and proxy errors alike), and
+  `get_trace` (the same formatted lines `tail` prints, as plain text).
+  Optional dependency (`pip install greenlight-mcp[serve]`) -- the base
+  install stays just `rich`, since most users only need
+  run/tail/stats. Verified the base install really doesn't pull in
+  `mcp` by installing into a clean venv and confirming `serve` fails
+  with a clear install instruction instead of a crash when the extra
+  isn't there.
+
 ## 0.3.1
 
 - `greenlight wrap` now also checks Cursor (`~/.cursor/mcp.json` and a

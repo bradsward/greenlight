@@ -95,6 +95,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
              "Claude Code, Cursor, and Windsurf locations)",
     )
 
+    subparsers.add_parser(
+        "serve",
+        help="Expose this project's own session data as an MCP server, so an agent can query "
+             "real trace/failure data directly instead of you relaying terminal output to it. "
+             "Needs the optional `serve` extra: pip install greenlight-mcp[serve]",
+    )
+
     args = parser.parse_args(argv)
 
     if args.cmd is None:
@@ -161,6 +168,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(format_suggestions(path, servers))
             print()
         return exit_code
+
+    if args.cmd == "serve":
+        try:
+            from greenlight.serve import run_serve
+        except ImportError:
+            print("greenlight: `serve` needs the optional dependency -- install with:", file=sys.stderr)
+            print("  pip install greenlight-mcp[serve]", file=sys.stderr)
+            return 1
+        return run_serve()
 
     parser.error(f"unknown command {args.cmd!r}")
     return 2

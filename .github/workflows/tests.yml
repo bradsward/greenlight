@@ -37,3 +37,4 @@ jobs:
       - run: python tests/test_record_fuzz.py
       - run: python tests/test_tool_error_extraction.py
       - run: python tests/test_wrap.py
+      - run: python tests/test_serve.py
