@@ -104,9 +104,17 @@ async def main() -> None:
                        for line in trace_lines), trace_lines
             print("get_trace: ok (same formatting `tail` uses, as plain text)")
 
+            # Not asserting the exact wording here: the installed mcp SDK
+            # wraps a raised exception's message differently across
+            # versions (see test_tool_error_extraction.py and
+            # test_proxy_e2e.py for the same lesson learned earlier) --
+            # one SDK version appends _resolve_session's own message text,
+            # another truncates to just "Error executing tool X". Both are
+            # fine; what actually matters is that this comes back as a
+            # proper tool-level error, not a crash or a silent wrong answer.
             r = await session.call_tool("get_session_stats", {"session": "no-such-session.jsonl"})
             assert r.is_error, "expected an error for a session that doesn't exist"
-            assert "no such session log" in r.content[0].text
+            assert "get_session_stats" in r.content[0].text
             print("unknown session: ok (reported as a tool error, not a crash)")
 
     print("\nALL CHECKS PASSED -- greenlight serve exposes real session data correctly over MCP.")
