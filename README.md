@@ -198,6 +198,10 @@ parsing.
       itself, so an agentic client can query real failure data directly
       instead of a human relaying terminal output to it (optional dep,
       base install unaffected -- verified against a clean venv)
+- [x] `stats`/`serve` survive a truncated session log -- a process that
+      gets killed mid-write can leave a partial last line, reproduced
+      for real and now reported as a `corrupted_lines` count instead of
+      an unhandled crash
 
 ## Notes
 

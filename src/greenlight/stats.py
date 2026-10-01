@@ -12,7 +12,25 @@ from typing import Optional
 
 
 def compute_stats(path: Path) -> dict:
-    entries = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    # A session log's last line can be truncated -- `run_proxy`'s process
+    # getting SIGKILLed, an OOM kill, a crash, or power loss can all leave
+    # a partial write behind (the writer locks around one line at a time,
+    # but a hard kill doesn't care what it interrupts). `tail_file`
+    # (render.py) already skips a line like that instead of raising;
+    # compute_stats used to just crash with a raw JSONDecodeError traceback
+    # on the exact failure this tool exists to report on cleanly. Skipping
+    # it and counting it, same as render.py does, means a crashed session
+    # still gets a real stats summary for everything that *did* make it to
+    # disk, instead of losing the whole report over one bad line.
+    corrupted = 0
+    entries = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            corrupted += 1
 
     requests = [e for e in entries if e.get("type") == "request"]
     notifications = [e for e in entries if e.get("type") == "notification"]
@@ -58,6 +76,7 @@ def compute_stats(path: Path) -> dict:
         "tool_errors": len(tool_errors),
         "proxy_errors": len(proxy_errors),
         "unparsed_lines": len(unparsed),
+        "corrupted_lines": corrupted,
         "latency_ms": {
             "min": round(min(latencies), 2) if latencies else None,
             "median": round(median(latencies), 2) if latencies else None,
@@ -67,7 +86,10 @@ def compute_stats(path: Path) -> dict:
             method: {"count": len(lats), "median_ms": round(median(lats), 2)}
             for method, lats in sorted(by_method.items())
         },
-        "failed": bool(transport_errors or tool_errors or proxy_errors),
+        # A corrupted trailing line usually means the process that was
+        # writing it didn't exit cleanly -- worth failing a CI check over,
+        # same as any other real failure this reports.
+        "failed": bool(transport_errors or tool_errors or proxy_errors or corrupted),
         "failure_messages": failure_messages,
     }
 
@@ -94,6 +116,9 @@ def format_stats(stats: dict, path: Path) -> str:
                       f"{stats['proxy_errors']} proxy error(s, target unreachable)")
         for msg in stats["failure_messages"][:5]:
             lines.append(f"    - {msg}")
+        if stats["corrupted_lines"]:
+            lines.append(f"    - {stats['corrupted_lines']} corrupted/truncated log line(s) -- "
+                          f"the process writing this log likely didn't exit cleanly")
     else:
         lines.append("  no failures")
 

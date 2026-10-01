@@ -47,7 +47,20 @@ def _resolve_session(session: Optional[str]) -> Path:
 
 
 def _read_entries(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    # Same reasoning as stats.py's compute_stats: a session log's last
+    # line can be truncated if the process writing it didn't exit
+    # cleanly, and a raised JSONDecodeError here would turn that into a
+    # tool-level crash instead of just quietly skipping the one line that
+    # didn't make it to disk intact.
+    entries = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return entries
 
 
 def build_server() -> MCPServer:

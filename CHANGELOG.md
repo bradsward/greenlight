@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.1
+
+- Fixed: a session log whose last line got truncated -- the proxy process
+  getting hard-killed, an OOM kill, a crash, or power loss mid-write can
+  all leave a partial JSON line behind -- crashed `greenlight stats` and
+  `greenlight serve`'s tools with a raw `JSONDecodeError` instead of
+  reporting on everything that *did* make it to disk intact.
+  `render.py`'s `tail_file` already skipped a line like that; `stats.py`
+  and `serve.py` didn't. Reproduced for real: took an actual recorded
+  session, truncated its last line, ran `greenlight stats` on it, got an
+  unhandled traceback. Now skipped and counted as a new
+  `corrupted_lines` stat, which also fails the CI check -- a corrupted
+  trailing line usually means the thing writing it didn't exit cleanly,
+  which is itself worth knowing about.
+
 ## 0.4.0
 
 - Added `greenlight serve` -- exposes this project's own session/trace
