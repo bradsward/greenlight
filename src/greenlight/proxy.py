@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-SESSIONS_DIR = Path.cwd() / "sessions"
+from greenlight.paths import ENV_VAR, sessions_dir
 
 
 def _tool_error_text(result: dict) -> str:
@@ -46,6 +46,31 @@ def _tool_error_text(result: dict) -> str:
     return " ".join(parts)
 
 
+def _tool_summaries(result: dict) -> Optional[list]:
+    """The parts of a tools/list result `greenlight check` lints: names,
+    descriptions, and input schema shape. A bad tool definition is one of
+    the most common reasons a server "works" but the model never calls a
+    tool (or the client rejects the whole list), and it's invisible in a
+    trace that only records method names."""
+    tools = result.get("tools")
+    if not isinstance(tools, list):
+        return None
+    summaries = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            summaries.append({"invalid": True})
+            continue
+        schema = tool.get("inputSchema")
+        description = tool.get("description")
+        summaries.append({
+            "name": tool.get("name"),
+            "description": description[:200] if isinstance(description, str) else None,
+            "has_input_schema": isinstance(schema, dict),
+            "input_schema_type": schema.get("type") if isinstance(schema, dict) else None,
+        })
+    return summaries
+
+
 @dataclass
 class _PendingRequest:
     method: str
@@ -63,8 +88,22 @@ class ProxySession:
         self.log_path = log_path
         self._pending: dict[object, _PendingRequest] = {}
         self._lock = threading.Lock()
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        self._log_file = open(log_path, "a", encoding="utf-8", buffering=1)
+        # A proxy that can't write its log must still relay. The user put
+        # greenlight in front of a server their AI client depends on;
+        # failing to record is our problem, failing to start their server
+        # would be theirs. Warn on stderr and carry on unrecorded.
+        self._log_file = None
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            self._log_file = open(log_path, "a", encoding="utf-8", buffering=1)
+        except OSError as e:
+            print(f"greenlight: WARNING: can't write session log ({e}) -- relaying without "
+                  f"recording. Set --log-dir or ${ENV_VAR} to a writable directory.",
+                  file=sys.stderr)
+
+    @property
+    def recording(self) -> bool:
+        return self._log_file is not None
 
     def record(self, direction: str, raw_line: str) -> None:
         line = raw_line.strip()
@@ -106,6 +145,11 @@ class ProxySession:
         entry["parsed"] = True
         msg_id = msg.get("id")
         method = msg.get("method")
+        if msg_id is not None:
+            # Kept so `greenlight check` can pair requests with responses
+            # after the fact (unanswered requests, responses to ids nobody
+            # sent) -- the in-memory _pending map is gone once we exit.
+            entry["id"] = msg_id
 
         if method is not None:
             entry["type"] = "request" if msg_id is not None else "notification"
@@ -122,6 +166,10 @@ class ProxySession:
             if pending is not None:
                 entry["method"] = pending.method
                 entry["latency_ms"] = round((ts - pending.sent_at) * 1000, 2)
+                if pending.method == "tools/list" and isinstance(msg.get("result"), dict):
+                    tools = _tool_summaries(msg["result"])
+                    if tools is not None:
+                        entry["tools"] = tools
             if "error" in msg:
                 entry["error"] = msg["error"]
             elif isinstance(msg.get("result"), dict) and msg["result"].get("isError"):
@@ -173,15 +221,18 @@ class ProxySession:
         # happen" for a race this specific -- the fix is one line and
         # free, no reason to leave a real architectural gap open just
         # because it didn't manifest today.
+        if self._log_file is None:
+            return
         with self._lock:
             self._log_file.write(json.dumps(entry) + "\n")
             self._log_file.flush()
 
     def close(self) -> None:
-        self._log_file.close()
+        if self._log_file is not None:
+            self._log_file.close()
 
 
-def _pump(src, dst, on_line: Callable[[str], None]) -> None:
+def _pump(src, dst, on_line: Callable[[str], None], close_dst: bool = False) -> None:
     """Read lines from src, relay them byte-for-byte to dst immediately,
     then hand off to on_line for logging. Relay happens first and always
     -- a logging exception must never be able to break the proxied
@@ -200,18 +251,22 @@ def _pump(src, dst, on_line: Callable[[str], None]) -> None:
     finally:
         try:
             dst.flush()
+            if close_dst:
+                dst.close()
         except (BrokenPipeError, OSError):
             pass
 
 
-def run_proxy(command: list[str], session_name: Optional[str] = None) -> int:
+def run_proxy(command: list[str], session_name: Optional[str] = None,
+              log_dir: Optional[str] = None) -> int:
     name = session_name or (Path(command[0]).stem if command else "session")
-    log_path = SESSIONS_DIR / f"{name}-{int(time.time())}-{uuid.uuid4().hex[:6]}.jsonl"
+    log_path = sessions_dir(log_dir) / f"{name}-{int(time.time())}-{uuid.uuid4().hex[:6]}.jsonl"
     session = ProxySession(log_path)
 
-    print(f"greenlight: recording to {log_path}", file=sys.stderr)
-    print(f"greenlight: run `greenlight tail {log_path}` in another terminal to watch live",
-          file=sys.stderr)
+    if session.recording:
+        print(f"greenlight: recording to {log_path}", file=sys.stderr)
+        print("greenlight: run `greenlight tail -f` in another terminal to watch live",
+              file=sys.stderr)
 
     proc = subprocess.Popen(
         command,
@@ -224,7 +279,12 @@ def run_proxy(command: list[str], session_name: Optional[str] = None) -> int:
 
     t_in = threading.Thread(
         target=_pump,
-        args=(sys.stdin.buffer, proc.stdin, lambda line: session.record("client->server", line)),
+        # close_dst: when the client closes our stdin, close the server's.
+        # That EOF is how the MCP stdio transport tells a server to shut
+        # down; without passing it on, the server never exits and neither
+        # does the proxy waiting on it.
+        args=(sys.stdin.buffer, proc.stdin, lambda line: session.record("client->server", line),
+              True),
         daemon=True,
     )
     t_out = threading.Thread(

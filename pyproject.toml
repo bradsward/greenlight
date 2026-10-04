@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "greenlight-mcp"
-version = "0.4.1"
+version = "0.5.0"
 description = "See what your MCP server is actually doing -- a transparent stdio/HTTP proxy and live trace viewer for the Model Context Protocol."
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,6 +40,9 @@ dev = [
 
 [project.scripts]
 greenlight = "greenlight.cli:main"
+# Same entry point under the package name, so `uvx greenlight-mcp ...` works
+# with no install step -- uvx runs the command named after the package.
+greenlight-mcp = "greenlight.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

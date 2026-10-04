@@ -40,3 +40,6 @@ jobs:
       - run: python tests/test_wrap.py
       - run: python tests/test_serve.py
       - run: python tests/test_corrupted_log_line.py
+      - run: python tests/test_log_location.py
+      - run: python tests/test_stdin_eof.py
+      - run: python tests/test_check.py

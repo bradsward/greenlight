@@ -16,194 +16,168 @@
 
 Listed in [awesome-mcp-devtools](https://github.com/Epistates/awesome-mcp-devtools#development-tools).
 
-See what your MCP server is actually doing.
+**See what your MCP server is actually doing.**
 
 ![greenlight tail, showing a real session: a normal call, a slow call flagged yellow, and a failed tool call flagged red](examples/demo.gif)
 
-Real trace, from an actual recorded session (`examples/demo-session.jsonl`),
-not staged text. Green for a clean success, yellow for a slow-but-fine
-call, red for a tool that actually failed.
+When an MCP integration misbehaves, you're usually debugging blind: the
+client says a tool "failed" or quietly never calls it, and you can't see
+what was sent or what came back. Greenlight is a transparent proxy that
+sits between your real client (Claude Desktop, Claude Code, Cursor,
+Windsurf) and your real server, relays every byte unchanged, and records
+every JSON-RPC message so you can watch it live, replay it, or lint it.
 
-A transparent stdio proxy for the Model Context Protocol. Point it at
-your real server command instead of running that command directly, and
-it relays every byte exactly as before, while recording every JSON-RPC
-message to a structured log you can watch live or replay.
+- **`tail`**: a live, color-coded trace. Green means ok, yellow means slow,
+  red means failed, and failed calls show the tool's real error message.
+- **`check`**: catches server bugs that never show up as a failed call,
+  like printing to stdout, broken tool schemas, or requests that never got
+  a response.
+- **`stats`**: a summary with a CI-friendly exit code.
+- **`serve`**: exposes the trace as an MCP server, so your coding agent
+  can read the failures itself.
 
-Right now, if an MCP integration isn't working, you're debugging blind:
-no visibility into what got sent, what came back, or why a call failed.
-Greenlight exists to fix that.
-
-**Why not [MCP Inspector](https://github.com/modelcontextprotocol/inspector)?**
-Different job. Inspector is a UI you drive yourself to manually test a
-server in isolation. Greenlight sits transparently in the path of your
-*real* client (Claude Desktop, Claude Code, whatever's actually
-running) and records what really happened, not what you tried by hand.
-It also writes a durable log (`greenlight stats` exits non-zero on
-failure, so it runs in CI) instead of a live session you have to be
-watching.
-
-## Install
+## Try it in 30 seconds
 
 ```bash
-pip install greenlight-mcp
+uvx greenlight-mcp run -- npx -y @modelcontextprotocol/server-everything stdio
 ```
 
-Or from source:
+Then, in another terminal:
 
 ```bash
-pip install -e .
+uvx greenlight-mcp tail -f
 ```
 
-## Try it right now, no server of your own required
+That's the official MCP reference server, with nothing to configure. It
+needs [uv](https://docs.astral.sh/uv/) and Node.js. Prefer pip?
+`pip install greenlight-mcp`, then use `greenlight` wherever this README
+says `uvx greenlight-mcp`.
 
-```bash
-greenlight run -- npx -y @modelcontextprotocol/server-everything stdio
+## Use it with your real client
+
+Wrap the server command in your client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "uvx",
+      "args": ["greenlight-mcp", "run", "--name", "my-server", "--",
+               "npx", "-y", "@some/mcp-server"]
+    }
+  }
+}
 ```
 
-That's the official MCP reference server -- public, free, no config.
-In another terminal:
-
-```bash
-greenlight tail -f
-```
-
-Watch real tool calls come through live. Needs Node.js for the `npx`
-part; nothing else.
-
-## Use it for real
-
-Not sure how to wrap your actual server command? Check first:
+Or let Greenlight write the snippet for you:
 
 ```bash
 greenlight wrap
 ```
 
-Finds your real MCP client config (Claude Desktop, Claude Code, Cursor,
-or Windsurf) and prints exactly what each server entry would look like
-rewritten to run through Greenlight. Read-only -- it never touches the
-file, just shows you what to paste in yourself.
+`wrap` finds your Claude Desktop, Claude Code, Cursor, or Windsurf config
+and prints each server entry rewritten to run through Greenlight. It's
+read-only and never edits the file. Its output uses an absolute Python
+path, which also avoids the common "client can't find `uvx`/`npx` on its
+PATH" startup failure (Claude Desktop on macOS doesn't see your shell's
+PATH).
 
-Wherever you'd normally configure a server command, wrap it the same
-way:
+Logs go to `~/.greenlight/sessions/`, whichever directory the client
+launched the server from. To put them somewhere else, use `--log-dir` or
+set `GREENLIGHT_SESSIONS_DIR`. If the log directory can't be written,
+Greenlight warns on stderr and keeps relaying. It never stops your server
+from starting.
 
-```bash
-greenlight run -- npx -y @some/mcp-server
-```
-
-instead of
-
-```bash
-npx -y @some/mcp-server
-```
-
-For a remote Streamable HTTP server, proxy it instead of spawning a
-process:
+For a remote Streamable HTTP server, proxy the URL instead:
 
 ```bash
 greenlight run --http http://127.0.0.1:9000/mcp
 ```
 
-Greenlight prints the local URL to point your client at (the same path
-as the target, just on `127.0.0.1:8808` -- see the printed message,
-which includes the exact path). Same session log, same `tail`/`stats`
-downstream, regardless of which transport produced it.
+Point your client at the local URL it prints. You get the same logs, and
+the same `tail`, `check`, and `stats`.
 
-Every message that passes through gets logged to `./sessions/`. Watch it:
+## Commands
 
 ```bash
-greenlight tail                 # replay the most recent session
-greenlight tail -f              # follow a session that's still running
-greenlight tail path/to/log.jsonl
+greenlight tail            # replay the most recent session
+greenlight tail -f         # follow a live session
+greenlight check           # lint the session for protocol/server bugs
+greenlight stats           # counts, latency by method, pass/fail
 ```
 
-Trace output is colorized by status: green for a clean success, yellow
-for a slow-but-fine call, red for anything that actually failed --
-including MCP tool-level failures (`result.isError`), not just
-transport-level JSON-RPC errors, which are a different thing and easy to
-miss if you only check for the obvious one. See `notes/day1.md` for why
-that distinction mattered enough to write a whole note about it.
+### `check`: bugs that don't look like failures
 
-Or skip watching it and just get the summary:
-
-```bash
-greenlight stats                # message counts, latency, pass/fail
-greenlight stats --json         # same thing, machine-readable
+```
+$ greenlight check
+  error   stdout-pollution  server wrote 1 non-JSON-RPC line(s) to stdout, e.g. 'server starting up...'.
+          In the stdio transport stdout is for protocol messages only -- send logs and prints to stderr.
+  error   tool-no-input-schema  tool 'no_schema' has no inputSchema -- the spec requires one, even for
+          a tool with no arguments ({"type": "object"})
+  error   tool-duplicate-name  tool name 'ok_tool' appears more than once in a single tools/list response
+  warning unanswered-request  'tools/call' (id 3) never got a response from the server
+  warning tool-no-description  tool 'no_description' has no description -- the model picks tools by
+          description, so it may never call this one
+  ...
 ```
 
-`stats` exits non-zero if anything failed -- transport error or tool
-error -- so it works as a CI check, not just an interactive summary:
+Real output, abridged, from [`tests/bad_fixture_server.py`](tests/bad_fixture_server.py),
+a server built to make these mistakes on purpose.
+
+It also flags non-object input schemas, tool names some clients reject,
+responses to ids nobody sent, and very slow calls. Errors exit non-zero,
+and so do warnings with `--strict`. `--json` gives machine-readable
+output.
+
+### CI
+
+Both `check` and `stats` exit non-zero on failure. `stats` fails on tool
+errors (`result.isError`) as well as JSON-RPC errors. That matters
+because a failed tool call arrives as a *successful* JSON-RPC response,
+and it's easy to miss if you only check for the obvious kind:
 
 ```bash
-greenlight run -- npx -y @some/mcp-server &
-# ... drive a real session against it ...
-greenlight stats || exit 1
+greenlight run --log-dir ./trace -- python my_server.py < scripted_session.jsonl
+greenlight check --log-dir ./trace && greenlight stats --log-dir ./trace
 ```
 
-## Let an agent read the trace directly
+### `serve`: let your agent read the trace
 
 ```bash
-pip install greenlight-mcp[serve]
+pip install "greenlight-mcp[serve]"
 greenlight serve
 ```
 
-Exposes this project's own session data as an MCP server. Add it to
-an agentic MCP client's own config (Claude Code, Cursor, anything
-MCP-capable) and it can call `get_failures` or `get_trace` on your last
-session directly -- the real error messages, not a paste of terminal
-output. Four tools: `list_sessions`, `get_session_stats`,
-`get_failures`, `get_trace`. Optional dependency -- the base install
-stays just `rich`.
+Add `greenlight serve` to your coding agent's MCP config, and it can call
+`get_failures`, `get_problems`, `get_trace`, or `get_session_stats`
+itself. It sees the real error messages, so you don't have to paste
+terminal output.
+
+## Why not MCP Inspector?
+
+They do different jobs. [Inspector](https://github.com/modelcontextprotocol/inspector)
+is a UI you drive by hand to test a server in isolation. Greenlight sits
+in the path of your *real* client and records what actually happened in a
+real session. That includes the client's exact requests, which is usually
+where the bug turns out to be. It also leaves a durable log you can check
+in CI.
 
 ## How it works
 
-`greenlight run` spawns your real server as a subprocess and sits
-between it and the real MCP client, relaying stdin/stdout on two
-threads. Every line is parsed as JSON-RPC, correlated by request id
-(so a response knows its own method name and latency), and written to a
-JSONL file. The one rule the whole thing depends on: nothing but the
-child process's actual bytes ever reaches Greenlight's own stdout --
-logging and UI output only ever go to stderr or to disk. A single stray
-print to stdout would corrupt the protocol stream the real client is
-parsing.
+`greenlight run` spawns your server as a subprocess and relays
+stdin/stdout on two threads. It parses each line as JSON-RPC, correlates
+each response with its request by id (so every response knows its method
+and latency), and appends the result to a JSONL file. The one rule
+everything depends on: nothing but the server's own bytes ever reaches
+Greenlight's stdout. Status output goes to stderr, and logs go to disk.
 
-## Status
+The base install depends only on `rich`. Python 3.10+, tested on Linux
+and Windows.
 
-- [x] `greenlight run` -- transparent proxy, validated end-to-end against
-      a real MCP server (not a mock)
-- [x] `greenlight tail` -- live trace viewer, both static replay and
-      genuine live-follow (verified separately, not assumed)
-- [x] Windows PATH resolution for `npx`-style commands, validated against
-      a real third-party npx-launched server (the official MCP reference
-      server), not just the Python fixture
-- [x] Published to PyPI -- `pip install greenlight-mcp`
-- [x] `greenlight stats` -- summary + CI-usable exit code (non-zero on
-      any failure, transport or tool-level)
-- [x] Streamable HTTP transport (`greenlight run --http <url>`),
-      validated end-to-end against a real HTTP+SSE server, not just stdio
-- [x] Property-based tested (Hypothesis) against arbitrary chunking of
-      the SSE stream -- found and fixed a real Unicode line-boundary bug
-      (`str.splitlines()` treats more than `\n`/`\r` as a line break)
-      that hand-written test cases hadn't caught
-- [x] Fuzzed the JSON-RPC classifier too -- found and fixed a crash on
-      any valid-but-non-object JSON (`null`, `42`, `[1,2,3]`), which
-      `json.loads()` accepts but a dict-shaped assumption didn't handle
-- [x] Failed tool calls show their real error text, not just a red flag --
-      `tail` and `stats` both surface the actual message MCP gave for
-      the failure, pulled from the same `result.content` a client would
-      show a user
-- [x] `greenlight wrap` -- finds your real Claude Desktop, Claude Code,
-      Cursor, or Windsurf config and shows exactly how to point it at
-      Greenlight, read-only
-- [x] `greenlight serve` -- exposes session/trace data as an MCP server
-      itself, so an agentic client can query real failure data directly
-      instead of a human relaying terminal output to it (optional dep,
-      base install unaffected -- verified against a clean venv)
-- [x] `stats`/`serve` survive a truncated session log -- a process that
-      gets killed mid-write can leave a partial last line, reproduced
-      for real and now reported as a `corrupted_lines` count instead of
-      an unhandled crash
+## More
 
-## Notes
-
-[`notes/`](notes/) is a running engineering log, not a cleaned-up
-retrospective -- what broke, how it was found, why the fix is what it is.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release.
+- [`notes/`](notes/): a running engineering log of what broke, how it
+  was found, and why each fix is what it is.
+- Issues and PRs welcome. If Greenlight misreads a real session, the log
+  file is the most useful thing you can attach.
