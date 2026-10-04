@@ -22,7 +22,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from greenlight.http_proxy import consume_sse_buffer  # noqa: E402
 
-SESSIONS_DIR = ROOT / "sessions"
+from greenlight.paths import sessions_dir  # noqa: E402
+SESSIONS_DIR = sessions_dir()
 PYTHON = sys.executable
 
 

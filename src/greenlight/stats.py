@@ -123,6 +123,7 @@ def format_stats(stats: dict, path: Path) -> str:
         lines.append("  no failures")
 
     if stats["unparsed_lines"]:
-        lines.append(f"  ({stats['unparsed_lines']} unparsed/non-JSON-RPC lines -- see notes/day3.md)")
+        lines.append(f"  ({stats['unparsed_lines']} unparsed/non-JSON-RPC lines -- "
+                      f"run `greenlight check` to see whether the server is printing to stdout)")
 
     return "\n".join(lines)

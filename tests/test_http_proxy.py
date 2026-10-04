@@ -26,7 +26,8 @@ from mcp.client.streamable_http import streamable_http_client
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-SESSIONS_DIR = ROOT / "sessions"
+from greenlight.paths import sessions_dir  # noqa: E402
+SESSIONS_DIR = sessions_dir()
 SERVER_PORT = 9001          # distinct from any port a human might have open manually
 PROXY_PORT = 8809
 TARGET_URL = f"http://127.0.0.1:{SERVER_PORT}/mcp"

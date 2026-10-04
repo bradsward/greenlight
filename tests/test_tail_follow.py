@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from greenlight.render import tail_file  # noqa: E402
 import greenlight.render as render_module  # noqa: E402
+from greenlight.paths import sessions_dir  # noqa: E402
 
 PYTHON = sys.executable
 
@@ -43,8 +44,8 @@ async def main() -> None:
             await session.initialize()
             await session.call_tool("add", {"a": 1, "b": 1})
 
-            sessions_dir = ROOT / "sessions"
-            candidates = sorted(sessions_dir.glob("follow-test-*.jsonl"), key=lambda p: p.stat().st_mtime)
+            sessions = sessions_dir()
+            candidates = sorted(sessions.glob("follow-test-*.jsonl"), key=lambda p: p.stat().st_mtime)
             log_path = candidates[-1]
             log_path_holder["path"] = log_path
             print(f"following {log_path} while the session is still open")

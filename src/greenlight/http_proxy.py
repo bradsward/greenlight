@@ -32,7 +32,8 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin, urlsplit
 
-from greenlight.proxy import SESSIONS_DIR, ProxySession
+from greenlight.paths import sessions_dir
+from greenlight.proxy import ProxySession
 
 HOP_BY_HOP = {"connection", "keep-alive", "transfer-encoding", "upgrade", "content-length"}
 
@@ -203,9 +204,10 @@ def consume_sse_buffer(buffer: bytes, chunk: bytes) -> tuple[list[str], bytes]:
     return events, buffer
 
 
-def run_http_proxy(target_url: str, port: int = 8808, session_name: Optional[str] = None) -> int:
+def run_http_proxy(target_url: str, port: int = 8808, session_name: Optional[str] = None,
+                   log_dir: Optional[str] = None) -> int:
     name = session_name or "http-session"
-    log_path = SESSIONS_DIR / f"{name}-{int(time.time())}-{uuid.uuid4().hex[:6]}.jsonl"
+    log_path = sessions_dir(log_dir) / f"{name}-{int(time.time())}-{uuid.uuid4().hex[:6]}.jsonl"
     session = ProxySession(log_path)
 
     handler = _make_handler(target_url, session)
@@ -220,7 +222,8 @@ def run_http_proxy(target_url: str, port: int = 8808, session_name: Optional[str
     target_path = urlsplit(target_url).path or "/"
     local_url = f"http://127.0.0.1:{port}{target_path}"
     print(f"greenlight: proxying {local_url} -> {target_url}", file=sys.stderr)
-    print(f"greenlight: recording to {log_path}", file=sys.stderr)
+    if session.recording:
+        print(f"greenlight: recording to {log_path}", file=sys.stderr)
     print(f"greenlight: point your MCP client at {local_url} instead of {target_url}", file=sys.stderr)
 
     try:

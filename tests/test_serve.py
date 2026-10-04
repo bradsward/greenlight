@@ -22,7 +22,9 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 ROOT = Path(__file__).resolve().parent.parent
-SESSIONS_DIR = ROOT / "sessions"
+sys.path.insert(0, str(ROOT / "src"))
+from greenlight.paths import sessions_dir  # noqa: E402
+SESSIONS_DIR = sessions_dir()
 PYTHON = sys.executable
 
 
@@ -68,7 +70,7 @@ async def main() -> None:
 
             tools = await session.list_tools()
             names = sorted(t.name for t in tools.tools)
-            assert names == ["get_failures", "get_session_stats", "get_trace", "list_sessions"], names
+            assert names == ["get_failures", "get_problems", "get_session_stats", "get_trace", "list_sessions"], names
             print(f"list_tools: ok ({names})")
 
             r = await session.call_tool("list_sessions", {})
@@ -103,6 +105,12 @@ async def main() -> None:
             assert any("FAILED: the fixture's own known transport failure" in line
                        for line in trace_lines), trace_lines
             print("get_trace: ok (same formatting `tail` uses, as plain text)")
+
+            r = await session.call_tool("get_problems", {"session": session_name})
+            assert not r.is_error, r
+            problems = [json.loads(block.text) for block in r.content]
+            assert all(set(p) == {"severity", "code", "message"} for p in problems), problems
+            print(f"get_problems: ok ({len(problems)} finding(s), same shape `check --json` gives)")
 
             # Not asserting the exact wording here: the installed mcp SDK
             # wraps a raised exception's message differently across
