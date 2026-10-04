@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.5.0
+
+- Fixed: session logs went to `./sessions` relative to whatever working
+  directory the proxy was launched from. A real MCP client chooses that
+  directory, not you -- Claude Desktop on macOS commonly uses `/`, which
+  isn't writable -- so wrapping a server the way `greenlight wrap`
+  suggests could crash with `PermissionError` before the server ever
+  started. Logs now default to `~/.greenlight/sessions`, overridable with
+  `--log-dir` (on `run`, `tail`, `stats`, `check`, `serve`) or
+  `$GREENLIGHT_SESSIONS_DIR`. And if the log location can't be written at
+  all, the proxy now warns on stderr and keeps relaying unrecorded instead
+  of taking the user's server down with it. **Upgrading:** logs recorded
+  by older versions are still in `./sessions`; pass `--log-dir ./sessions`
+  to read them.
+- Fixed: when the client closed the proxy's stdin -- the MCP stdio
+  transport's normal shutdown signal -- `greenlight run` never passed that
+  EOF on to the server, so the server kept waiting for input and the proxy
+  hung forever. Reproduced with a plain `echo ... | greenlight run -- cat`
+  on 0.4.1.
+- Added `greenlight check`: lints a recorded session for bugs that don't
+  show up as a failed call -- a server printing to stdout (the most
+  common stdio-transport bug), tools with a missing or non-object
+  `inputSchema`, duplicate tool names, missing descriptions, tool names
+  outside the portable `^[A-Za-z0-9_-]{1,64}$`, requests that never got a
+  response, responses to ids nobody sent, and very slow calls. Errors exit
+  non-zero; `--strict` fails on warnings too; `--json` for machines.
+  Also exposed as a `get_problems` tool in `greenlight serve`.
+- Session logs now record each message's JSON-RPC `id` and, for
+  `tools/list` results, each tool's name, description and input schema
+  type -- what `check` needs to work after the fact.
+- Added a `greenlight-mcp` command alias, so `uvx greenlight-mcp ...`
+  works with no install step.
+- README rewritten around trying it in 30 seconds and the real-client
+  config, instead of a development checklist.
+
 ## 0.4.1
 
 - Fixed: a session log whose last line got truncated -- the proxy process

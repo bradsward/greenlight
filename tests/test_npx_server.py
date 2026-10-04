@@ -18,7 +18,9 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 ROOT = Path(__file__).resolve().parent.parent
-SESSIONS_DIR = ROOT / "sessions"
+sys.path.insert(0, str(ROOT / "src"))
+from greenlight.paths import sessions_dir  # noqa: E402
+SESSIONS_DIR = sessions_dir()
 PYTHON = sys.executable
 
 

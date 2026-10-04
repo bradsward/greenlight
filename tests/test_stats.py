@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from greenlight.cli import main as cli_main  # noqa: E402
 from greenlight.stats import compute_stats, format_stats  # noqa: E402
+from greenlight.paths import sessions_dir  # noqa: E402
 
 PYTHON = sys.executable
 
@@ -36,8 +37,8 @@ def test_known_failure() -> None:
 
 
 async def _record_clean_session() -> Path:
-    sessions_dir = ROOT / "sessions"
-    before = set(sessions_dir.glob("clean-*.jsonl")) if sessions_dir.exists() else set()
+    sessions = sessions_dir()
+    before = set(sessions.glob("clean-*.jsonl")) if sessions.exists() else set()
 
     params = StdioServerParameters(
         command=PYTHON,
@@ -51,7 +52,7 @@ async def _record_clean_session() -> Path:
             result = await session.call_tool("add", {"a": 1, "b": 1})
             assert not result.is_error
 
-    after = set(sessions_dir.glob("clean-*.jsonl"))
+    after = set(sessions.glob("clean-*.jsonl"))
     new_logs = after - before
     assert len(new_logs) == 1
     return new_logs.pop()
@@ -70,8 +71,8 @@ def test_clean_session() -> None:
 
 
 async def _record_boom_session() -> Path:
-    sessions_dir = ROOT / "sessions"
-    before = set(sessions_dir.glob("boom-*.jsonl")) if sessions_dir.exists() else set()
+    sessions = sessions_dir()
+    before = set(sessions.glob("boom-*.jsonl")) if sessions.exists() else set()
 
     params = StdioServerParameters(
         command=PYTHON,
@@ -85,7 +86,7 @@ async def _record_boom_session() -> Path:
             result = await session.call_tool("boom", {})
             assert result.is_error
 
-    after = set(sessions_dir.glob("boom-*.jsonl"))
+    after = set(sessions.glob("boom-*.jsonl"))
     new_logs = after - before
     assert len(new_logs) == 1
     return new_logs.pop()

@@ -17,28 +17,28 @@ from typing import Optional
 
 from mcp.server.mcpserver import MCPServer
 
-from greenlight.proxy import SESSIONS_DIR
+from greenlight.check import check_session
 from greenlight.render import _format_entry, latest_session
 from greenlight.stats import compute_stats
 
 
-def _resolve_session(session: Optional[str]) -> Path:
-    """A session argument can be a bare filename (resolved under
-    ./sessions), a full/relative path, or omitted entirely (the most
+def _resolve_session(session: Optional[str], sessions: Path) -> Path:
+    """A session argument can be a bare filename (resolved under the
+    sessions directory), a full/relative path, or omitted entirely (the most
     recent session). Raising a plain exception here, rather than
     swallowing the problem, is deliberate -- the mcp SDK turns a raised
     exception into a proper tool-level isError result with the message
     intact, exactly the mechanism this project's own record() extracts
     and surfaces (see proxy.py's _tool_error_text)."""
     if session is None:
-        path = latest_session(SESSIONS_DIR)
+        path = latest_session(sessions)
         if path is None:
-            raise FileNotFoundError(f"no session logs found in {SESSIONS_DIR}")
+            raise FileNotFoundError(f"no session logs found in {sessions}")
         return path
 
     path = Path(session)
     if not path.is_absolute():
-        candidate = SESSIONS_DIR / session
+        candidate = sessions / session
         if candidate.exists():
             return candidate
     if not path.exists():
@@ -63,15 +63,15 @@ def _read_entries(path: Path) -> list[dict]:
     return entries
 
 
-def build_server() -> MCPServer:
+def build_server(sessions: Path) -> MCPServer:
     server = MCPServer("greenlight")
 
     @server.tool()
     def list_sessions() -> list[dict]:
         """List recorded Greenlight session logs, most recently modified first."""
-        if not SESSIONS_DIR.exists():
+        if not sessions.exists():
             return []
-        files = sorted(SESSIONS_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        files = sorted(sessions.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
         return [
             {
                 "name": p.name,
@@ -86,7 +86,7 @@ def build_server() -> MCPServer:
     def get_session_stats(session: Optional[str] = None) -> dict:
         """Message counts, latency (min/median/max, by method), and a pass/fail verdict for
         a recorded session. Defaults to the most recent session if none is given."""
-        return compute_stats(_resolve_session(session))
+        return compute_stats(_resolve_session(session, sessions))
 
     @server.tool()
     def get_failures(session: Optional[str] = None, limit: int = 10) -> list[dict]:
@@ -94,7 +94,7 @@ def build_server() -> MCPServer:
         errors, tool-level failures (with the real error message the tool itself gave, not
         just a flag), and proxy errors (target unreachable). This is the direct answer to
         "what broke and why", without having to read the raw trace."""
-        entries = _read_entries(_resolve_session(session))
+        entries = _read_entries(_resolve_session(session, sessions))
         failures = []
         for e in entries:
             if e.get("type") == "error":
@@ -116,16 +116,23 @@ def build_server() -> MCPServer:
         return failures[:limit]
 
     @server.tool()
+    def get_problems(session: Optional[str] = None) -> list[dict]:
+        """Protocol and server bugs in a session that don't show up as failed calls: the server
+        printing to stdout, invalid or unportable tool definitions, requests that never got a
+        response, very slow calls. Same findings as `greenlight check`."""
+        return [vars(f) for f in check_session(_resolve_session(session, sessions))]
+
+    @server.tool()
     def get_trace(session: Optional[str] = None, limit: int = 50) -> list[str]:
         """The last N formatted trace lines from a session -- the same text `greenlight tail`
         prints, plain text (no color codes). Defaults to the most recent session."""
-        entries = _read_entries(_resolve_session(session))
+        entries = _read_entries(_resolve_session(session, sessions))
         lines = [_format_entry(e)[0] for e in entries]
         return lines[-limit:]
 
     return server
 
 
-def run_serve() -> int:
-    build_server().run()
+def run_serve(sessions: Path) -> int:
+    build_server(sessions).run()
     return 0

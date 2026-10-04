@@ -5,7 +5,6 @@ __pycache__/
 build/
 dist/
 .pytest_cache/
-.claude/
 .env
 
 # recorded session logs -- these are runtime output, not source.
