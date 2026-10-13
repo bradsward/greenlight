@@ -15,6 +15,7 @@ uses stderr for protocol traffic, so a status line there is safe).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -94,8 +95,14 @@ class ProxySession:
         # would be theirs. Warn on stderr and carry on unrecorded.
         self._log_file = None
         try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            self._log_file = open(log_path, "a", encoding="utf-8", buffering=1)
+            # Owner-only. The log holds more than counts: tool error text
+            # and the raw text of anything the server prints to stdout,
+            # which can include secrets, and it now lives in a fixed
+            # per-user directory instead of the launch cwd. The default
+            # umask would typically leave it readable by other local users.
+            log_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            fd = os.open(log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            self._log_file = os.fdopen(fd, "a", encoding="utf-8", buffering=1)
         except OSError as e:
             print(f"greenlight: WARNING: can't write session log ({e}) -- relaying without "
                   f"recording. Set --log-dir or ${ENV_VAR} to a writable directory.",

@@ -31,6 +31,11 @@
   `npx`/`uvx` first runs include the package download) rather than as a
   slow call -- found by running `check` against the official reference
   server, where a cold `npx -y` cache made `initialize` take 11.8s.
+- Session logs are now created owner-only (file 0600, directory 0700 on
+  POSIX). They hold more than counts -- tool error text and the raw text
+  of anything a server prints to stdout, which can include secrets -- and
+  now live in a fixed per-user directory, where the default umask would
+  typically leave them readable by other local users.
 - Session logs now record each message's JSON-RPC `id` and, for
   `tools/list` results, each tool's name, description and input schema
   type -- what `check` needs to work after the fact.
