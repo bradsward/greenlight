@@ -93,7 +93,30 @@ def test_warnings_only_pass_unless_strict() -> None:
     print("warnings: exit 0 by default, exit 1 with --strict")
 
 
+def test_slow_initialize_is_startup_not_a_slow_call() -> None:
+    # Found by running `check` on a real session against the official
+    # reference server launched with `npx -y`: a cold cache made
+    # 'initialize' take 11.8s, and the warning told the user to "consider
+    # progress notifications", advice that makes no sense for startup.
+    with tempfile.TemporaryDirectory() as tmp:
+        log = Path(tmp) / "slow-start.jsonl"
+        entries = [
+            {"ts": 1.0, "direction": "client->server", "parsed": True, "type": "request",
+             "method": "initialize", "id": 1},
+            {"ts": 12.8, "direction": "server->client", "parsed": True, "type": "result",
+             "method": "initialize", "id": 1, "latency_ms": 11800.0},
+        ]
+        log.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+        findings = check_session(log)
+        assert [f.code for f in findings] == ["slow-start"], findings
+        assert "progress notification" not in findings[0].message
+        assert "npx" in findings[0].message
+        assert cli_main(["check", str(log)]) == 0, "still just a warning"
+    print("slow initialize: reported as slow-start with startup advice, not slow-call")
+
+
 if __name__ == "__main__":
     test_broken_server()
     test_clean_session()
     test_warnings_only_pass_unless_strict()
+    test_slow_initialize_is_startup_not_a_slow_call()

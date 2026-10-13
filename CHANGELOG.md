@@ -26,7 +26,11 @@
   outside the portable `^[A-Za-z0-9_-]{1,64}$`, requests that never got a
   response, responses to ids nobody sent, and very slow calls. Errors exit
   non-zero; `--strict` fails on warnings too; `--json` for machines.
-  Also exposed as a `get_problems` tool in `greenlight serve`.
+  Also exposed as a `get_problems` tool in `greenlight serve`. A slow
+  `initialize` is reported as `slow-start` (startup time, with a note that
+  `npx`/`uvx` first runs include the package download) rather than as a
+  slow call -- found by running `check` against the official reference
+  server, where a cold `npx -y` cache made `initialize` take 11.8s.
 - Session logs now record each message's JSON-RPC `id` and, for
   `tools/list` results, each tool's name, description and input schema
   type -- what `check` needs to work after the fact.

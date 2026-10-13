@@ -119,6 +119,18 @@ def check_session(path: Path) -> list[Finding]:
     for e in entries:
         latency = e.get("latency_ms")
         if latency is not None and latency >= SLOW_WARN_MS:
+            if e.get("method") == "initialize":
+                # Startup, not a long-running call: progress notifications
+                # don't apply, and with `npx -y` / `uvx` the first run is
+                # mostly the package download (seen at 11.8s against the
+                # official reference server on a cold cache).
+                findings.append(Finding(
+                    "warning", "slow-start",
+                    f"server took {latency / 1000:.1f}s to answer 'initialize' -- clients with a short "
+                    f"startup timeout may give up. If it's launched with npx or uvx, the first run "
+                    f"includes downloading the package; install it ahead of time to avoid that",
+                ))
+                continue
             findings.append(Finding(
                 "warning", "slow-call",
                 f"{e.get('method')!r} took {latency / 1000:.1f}s -- clients often time out "
