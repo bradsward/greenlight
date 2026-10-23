@@ -14,6 +14,7 @@ uses stderr for protocol traffic, so a status line there is safe).
 """
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -284,6 +285,13 @@ def run_proxy(command: list[str], session_name: Optional[str] = None,
     )
     assert proc.stdin is not None and proc.stdout is not None
 
+    # bufsize=0 makes proc.stdout a raw FileIO, and readline() on a raw
+    # stream reads one byte per syscall: a 4 MB tool result (a base64
+    # screenshot, a big file read) took 2.3s through the proxy against
+    # 0.08s direct. A BufferedReader still returns each line the moment
+    # its newline arrives, so this adds no latency to small messages.
+    server_stdout = io.BufferedReader(proc.stdout, buffer_size=1 << 16)
+
     t_in = threading.Thread(
         target=_pump,
         # close_dst: when the client closes our stdin, close the server's.
@@ -296,7 +304,7 @@ def run_proxy(command: list[str], session_name: Optional[str] = None,
     )
     t_out = threading.Thread(
         target=_pump,
-        args=(proc.stdout, sys.stdout.buffer, lambda line: session.record("server->client", line)),
+        args=(server_stdout, sys.stdout.buffer, lambda line: session.record("server->client", line)),
         daemon=True,
     )
     t_in.start()

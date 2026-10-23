@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1
+
+- Fixed: large server responses were relayed very slowly. The server's
+  stdout was read through an unbuffered pipe, and `readline()` on an
+  unbuffered stream reads one byte per syscall, so a 4 MB tool result (a
+  base64 screenshot, a big file read) took 2.3s through the proxy against
+  0.08s direct -- about 28x. The relayed bytes were always correct; it was
+  purely speed, but it also inflated the latencies greenlight logged for
+  big results. Now buffered: a 16 MB result costs about 0.2s over running
+  the server directly, and small messages are unaffected (each line is
+  still passed on the moment its newline arrives). Found by timing real
+  traffic, not by a failing test.
+
 ## 0.5.0
 
 - Fixed: session logs went to `./sessions` relative to whatever working
