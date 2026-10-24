@@ -18,20 +18,22 @@ Listed in [awesome-mcp-devtools](https://github.com/Epistates/awesome-mcp-devtoo
 
 **See what your MCP server is actually doing.**
 
-![greenlight tail, showing a real session: a normal call, a slow call flagged yellow, and a failed tool call flagged red](examples/demo.gif)
+![greenlight tail showing a live trace with a slow call in yellow and a failed tool call in red with its real error message, then greenlight check listing the bugs it found in a broken server](examples/demo.gif)
 
 When an MCP integration misbehaves, you're usually debugging blind: the
 client says a tool "failed" or quietly never calls it, and you can't see
 what was sent or what came back. Greenlight is a transparent proxy that
 sits between your real client (Claude Desktop, Claude Code, Cursor,
 Windsurf) and your real server, relays every byte unchanged, and records
-every JSON-RPC message so you can watch it live, replay it, or lint it.
+every JSON-RPC message so you can watch it live, read it back later, or
+lint it.
 
 - **`tail`**: a live, color-coded trace. Green means ok, yellow means slow,
   red means failed, and failed calls show the tool's real error message.
 - **`check`**: catches server bugs that never show up as a failed call,
-  like printing to stdout, broken tool schemas, or requests that never got
-  a response.
+  like printing to stdout, tool schemas the Claude API rejects, HTTP 401s
+  that clients report as "failed to connect", or requests that never got a
+  response.
 - **`stats`**: a summary with a CI-friendly exit code.
 - **`serve`**: exposes the trace as an MCP server, so your coding agent
   can read the failures itself.
@@ -116,20 +118,28 @@ greenlight stats           # counts, latency by method, pass/fail
 ### `check`: bugs that don't look like failures
 
 ```
-$ greenlight check
-  error   stdout-pollution  server wrote 1 non-JSON-RPC line(s) to stdout, e.g. 'server starting up...'.
-          In the stdio transport stdout is for protocol messages only -- send logs and prints to stderr.
-  error   tool-no-input-schema  tool 'no_schema' has no inputSchema -- the spec requires one, even for
-          a tool with no arguments ({"type": "object"})
-  error   tool-duplicate-name  tool name 'ok_tool' appears more than once in a single tools/list response
-  warning unanswered-request  'tools/call' (id 3) never got a response from the server
-  warning tool-no-description  tool 'no_description' has no description -- the model picks tools by
-          description, so it may never call this one
+$ greenlight check examples/bad-session.jsonl
+session: examples/bad-session.jsonl
+
+  error    stdout-pollution        server wrote 1 non-JSON-RPC line(s) to stdout, e.g. 'server
+                                   starting up...'. In the stdio transport stdout is for
+                                   protocol messages only -- send logs and prints to stderr.
+                                   Clients may drop these lines, fail to parse, or disconnect.
+  error    tool-schema-combinator  tool 'either_or' inputSchema has top-level anyOf. It's valid
+                                   JSON Schema, but the Claude API rejects it with a 400, and
+                                   in Claude Code a single such tool can fail every request in
+                                   the session. Make the root a plain object (nested anyOf is
+                                   fine) and enforce the either/or rule in the tool handler
+  error    tool-duplicate-name     tool name 'ok_tool' appears more than once in a single
+                                   tools/list response
+  warning  unanswered-request      'tools/call' (id 3) never got a response from the server
   ...
 ```
 
-Real output, abridged, from [`tests/bad_fixture_server.py`](tests/bad_fixture_server.py),
-a server built to make these mistakes on purpose.
+Real output, abridged, from [`examples/bad-session.jsonl`](examples/bad-session.jsonl):
+a session recorded through the proxy against
+[`tests/bad_fixture_server.py`](tests/bad_fixture_server.py), a server
+built to make these mistakes on purpose.
 
 It also flags non-object input schemas, tool names some clients reject,
 responses to ids nobody sent, and very slow calls or slow startup.
@@ -168,6 +178,20 @@ Add `greenlight serve` to your coding agent's MCP config, and it can call
 `get_failures`, `get_problems`, `get_trace`, or `get_session_stats`
 itself. It sees the real error messages, so you don't have to paste
 terminal output.
+
+## Server won't connect?
+
+"Server disconnected", `spawn npx ENOENT`, "Connection closed (-32000)":
+the usual cause is that your client starts the server with a smaller PATH,
+and a different working directory, than your terminal has. So the command
+works for you and not for the client.
+
+`greenlight wrap` writes full paths into the config it suggests, and warns
+about commands that aren't on your PATH and relative paths the client
+can't resolve. If the server still can't be started, `greenlight run`
+says what was missing on stderr (which clients usually capture in the
+server's log) instead of dumping a traceback. Once it starts but misbehaves,
+`greenlight check` and `tail` show what it did.
 
 ## Why not MCP Inspector?
 

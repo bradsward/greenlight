@@ -1,11 +1,11 @@
-{"ts": 1787186959.1387503, "direction": "client->server", "parsed": true, "type": "request", "method": "initialize"}
-{"ts": 1787186959.9319863, "direction": "server->client", "parsed": true, "type": "result", "method": "initialize", "latency_ms": 793.24}
-{"ts": 1787186959.9366646, "direction": "client->server", "parsed": true, "type": "notification", "method": "notifications/initialized"}
-{"ts": 1787186959.9367247, "direction": "client->server", "parsed": true, "type": "request", "method": "tools/call"}
-{"ts": 1787186959.937965, "direction": "server->client", "parsed": true, "type": "result", "method": "tools/call", "latency_ms": 1.24}
-{"ts": 1787186959.9383807, "direction": "client->server", "parsed": true, "type": "request", "method": "tools/list"}
-{"ts": 1787186959.939577, "direction": "server->client", "parsed": true, "type": "result", "method": "tools/list", "latency_ms": 1.2}
-{"ts": 1787186959.9881368, "direction": "client->server", "parsed": true, "type": "request", "method": "tools/call"}
-{"ts": 1787186960.6395006, "direction": "server->client", "parsed": true, "type": "result", "method": "tools/call", "latency_ms": 651.36}
-{"ts": 1787186960.6412106, "direction": "client->server", "parsed": true, "type": "request", "method": "tools/call"}
-{"ts": 1787186960.6421201, "direction": "server->client", "parsed": true, "type": "result", "method": "tools/call", "latency_ms": 0.91, "tool_error": true}
+{"ts": 1792801861.7662263, "direction": "client->server", "parsed": true, "id": 1, "type": "request", "method": "initialize"}
+{"ts": 1792801862.567097, "direction": "server->client", "parsed": true, "id": 1, "type": "result", "method": "initialize", "latency_ms": 800.87}
+{"ts": 1792801862.5679412, "direction": "client->server", "parsed": true, "type": "notification", "method": "notifications/initialized"}
+{"ts": 1792801862.5680127, "direction": "client->server", "parsed": true, "id": 2, "type": "request", "method": "tools/list"}
+{"ts": 1792801862.5690877, "direction": "server->client", "parsed": true, "id": 2, "type": "result", "method": "tools/list", "latency_ms": 1.08, "tools": [{"name": "add", "description": "Add two numbers.", "has_input_schema": true, "input_schema_type": "object", "schema_combinators": []}, {"name": "slow_echo", "description": "Echo text back after a delay, in milliseconds.", "has_input_schema": true, "input_schema_type": "object", "schema_combinators": []}, {"name": "boom", "description": "Always raises, to exercise the proxy's error-path logging.", "has_input_schema": true, "input_schema_type": "object", "schema_combinators": []}]}
+{"ts": 1792801862.570133, "direction": "client->server", "parsed": true, "id": 3, "type": "request", "method": "tools/call"}
+{"ts": 1792801862.5709813, "direction": "server->client", "parsed": true, "id": 3, "type": "result", "method": "tools/call", "latency_ms": 0.85}
+{"ts": 1792801862.620371, "direction": "client->server", "parsed": true, "id": 4, "type": "request", "method": "tools/call"}
+{"ts": 1792801863.2715476, "direction": "server->client", "parsed": true, "id": 4, "type": "result", "method": "tools/call", "latency_ms": 651.18}
+{"ts": 1792801863.272778, "direction": "client->server", "parsed": true, "id": 5, "type": "request", "method": "tools/call"}
+{"ts": 1792801863.2737384, "direction": "server->client", "parsed": true, "id": 5, "type": "result", "method": "tools/call", "latency_ms": 0.96, "tool_error": true, "tool_error_message": "Error executing tool boom: this tool always fails, on purpose"}

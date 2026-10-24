@@ -55,6 +55,7 @@ def test_broken_server() -> None:
             "tool-no-description",
             "tool-name-portability",
             "tool-duplicate-name",
+            "tool-schema-combinator",
             "unanswered-request",
         ])
         assert codes == expected, f"\n got: {codes}\nwant: {expected}"

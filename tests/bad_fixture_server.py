@@ -4,7 +4,8 @@ the SDK because the SDK won't let you make most of these mistakes:
 
     - prints a log line to stdout (the classic stdio-transport bug)
     - lists a tool with no inputSchema, one with a non-object schema, one
-      with no description, one with a dotted name, and a duplicate name
+      with no description, one with a dotted name, a duplicate name, and
+      one whose schema has a top-level anyOf
     - never answers tools/call
 """
 import json
@@ -19,6 +20,8 @@ TOOLS = [
     {"name": "no_description", "inputSchema": {"type": "object"}},
     {"name": "files.read", "description": "Dotted name.", "inputSchema": {"type": "object"}},
     {"name": "ok_tool", "description": "Duplicate.", "inputSchema": {"type": "object"}},
+    {"name": "either_or", "description": "Takes a or b.",
+     "inputSchema": {"type": "object", "anyOf": [{"required": ["a"]}, {"required": ["b"]}]}},
 ]
 
 for line in sys.stdin:

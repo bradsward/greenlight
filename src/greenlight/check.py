@@ -221,15 +221,23 @@ def findings_json(findings: list[Finding]) -> str:
 
 
 def print_findings(findings: list[Finding], path: Path, console) -> None:
-    from rich.markup import escape
-    console.print(f"session: {path}\n")
+    from rich.padding import Padding
+    from rich.table import Table
+    from rich.text import Text
+    console.print(Text(f"session: {path}\n"))
     if not findings:
         console.print("  [green]no problems found[/green]")
         return
+    # A grid, so a long message wraps under its own column instead of
+    # running back to the left edge of the terminal.
+    table = Table.grid(padding=(0, 2))
+    table.add_column(no_wrap=True)
+    table.add_column(no_wrap=True, style="dim")
+    table.add_column()
     for f in findings:
         style = "bold red" if f.severity == "error" else "yellow"
-        console.print(f"  [{style}]{f.severity:<7s}[/{style}] [dim]{f.code}[/dim]  {escape(f.message)}",
-                      highlight=False)
+        table.add_row(Text(f.severity, style=style), f.code, Text(f.message))
+    console.print(Padding(table, (0, 0, 0, 2)))
     errors = sum(f.severity == "error" for f in findings)
     warnings = len(findings) - errors
     console.print(f"\n  {errors} error(s), {warnings} warning(s)")
