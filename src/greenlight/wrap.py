@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -115,6 +116,11 @@ def wrapped_entry(name: str, entry: dict) -> Optional[dict]:
 
     original_command = entry["command"]
     original_args = entry.get("args", [])
+    # `spawn npx ENOENT` / "Server disconnected" is the failure MCP users
+    # hit most: the client launches servers with a smaller PATH than a
+    # terminal has. This runs in a terminal, where the command resolves, so
+    # write the full path into the config instead of a bare name.
+    original_command = shutil.which(original_command) or original_command
 
     wrapped = dict(entry)
     # sys.executable, not a bare "greenlight" -- Claude Desktop on macOS is
@@ -128,6 +134,37 @@ def wrapped_entry(name: str, entry: dict) -> Optional[dict]:
         original_command, *original_args,
     ]
     return wrapped
+
+
+_SCRIPT_SUFFIXES = (".py", ".js", ".mjs", ".cjs", ".ts", ".sh", ".jar", ".exe", ".bat", ".cmd")
+
+
+def entry_notes(entry: dict) -> list[str]:
+    """Things worth knowing before pasting a wrapped entry in: a command
+    that isn't on PATH here either, and relative paths that a client
+    launching from its own working directory (often `/`) won't resolve."""
+    notes = []
+    command = entry.get("command")
+    if isinstance(command, str):
+        resolved = shutil.which(command)
+        if resolved is None:
+            notes.append(
+                f"{command!r} isn't on PATH in this terminal either, so a client won't find it "
+                f"-- install it, or put the full path in the config"
+            )
+        elif resolved != command:
+            notes.append(f"{command!r} written as {resolved!r}: clients often launch servers with "
+                         f"a smaller PATH than a terminal has")
+    for arg in entry.get("args") or []:
+        if not isinstance(arg, str) or arg.startswith("-") or os.path.isabs(arg):
+            continue
+        looks_like_path = "/" in arg or "\\" in arg or arg.lower().endswith(_SCRIPT_SUFFIXES)
+        if looks_like_path and Path(arg).exists():
+            notes.append(
+                f"argument {arg!r} is a relative path -- clients start servers from their own "
+                f"working directory (often `/`), so it may not resolve; use an absolute path"
+            )
+    return notes
 
 
 def _indent(text: str, spaces: int = 4) -> str:
@@ -155,8 +192,16 @@ def format_suggestions(path: Path, servers: dict) -> str:
             continue
 
         any_suggested = True
-        lines.append(f"\n  {name}: replace this server's entry with:")
-        lines.append(_indent(json.dumps(wrapped, indent=2)))
+        # Show only the two fields that change. A server entry's `env` is
+        # where API keys live, and the suggestion ends up in terminal
+        # scrollback and in whatever the user pastes it into.
+        lines.append(f"\n  {name}: replace this server's \"command\" and \"args\" with:")
+        lines.append(_indent(json.dumps({k: wrapped[k] for k in ("command", "args")}, indent=2)))
+        kept = sorted(k for k in entry if k not in ("command", "args"))
+        if kept:
+            lines.append(f"    (leave the rest of the entry as it is: {', '.join(kept)})")
+        for note in entry_notes(entry):
+            lines.append(f"    note: {note}")
 
     if not any_suggested:
         lines.append("\n  nothing to wrap here")

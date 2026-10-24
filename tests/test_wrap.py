@@ -9,6 +9,7 @@ Usage:
     .venv\\Scripts\\python.exe tests\\test_wrap.py
 """
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from greenlight.wrap import (  # noqa: E402
+    entry_notes,
     find_configs,
     format_suggestions,
     is_already_wrapped,
@@ -27,8 +29,10 @@ from greenlight.wrap import (  # noqa: E402
 
 
 def test_wrapped_entry_rewrites_command_and_keeps_other_fields() -> None:
+    # a command that exists nowhere, so it stays exactly as written and
+    # the assertion doesn't depend on what's installed on this machine
     entry = {
-        "command": "npx",
+        "command": "greenlight-test-not-installed",
         "args": ["-y", "@some/server"],
         "env": {"API_KEY": "secret"},
     }
@@ -37,10 +41,43 @@ def test_wrapped_entry_rewrites_command_and_keeps_other_fields() -> None:
     assert wrapped["command"] == sys.executable
     assert wrapped["args"][:5] == ["-m", "greenlight.cli", "run", "--name", "myserver"]
     assert wrapped["args"][5] == "--"
-    assert wrapped["args"][6:] == ["npx", "-y", "@some/server"]
+    assert wrapped["args"][6:] == ["greenlight-test-not-installed", "-y", "@some/server"]
     # env and any other fields must survive untouched
     assert wrapped["env"] == {"API_KEY": "secret"}
     print("wrapped_entry: ok (command/args rewritten, other fields preserved)")
+
+
+def test_command_resolved_to_full_path() -> None:
+    # `spawn npx ENOENT`: clients launch servers with a smaller PATH than a
+    # terminal. wrap runs in a terminal, so it writes the full path.
+    name = Path(sys.executable).name
+    wrapped = wrapped_entry("s", {"command": name, "args": ["-c", "pass"]})
+    resolved = wrapped["args"][6]
+    assert resolved != name and Path(resolved).is_absolute() and Path(resolved).exists(), resolved
+    assert Path(resolved).name.lower() == name.lower(), resolved
+    assert wrapped["args"][7:] == ["-c", "pass"], "the server's own arguments must be untouched"
+    assert any("written as" in n for n in entry_notes({"command": name})), "tell the user it was resolved"
+    print("command resolved: ok (bare name -> absolute path, arguments untouched)")
+
+
+def test_notes_for_missing_command_and_relative_paths() -> None:
+    notes = entry_notes({"command": "greenlight-test-not-installed", "args": []})
+    assert any("isn't on PATH" in n for n in notes), notes
+
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "server.py").write_text("print('hi')\n", encoding="utf-8")
+        old = os.getcwd()
+        os.chdir(tmp)
+        try:
+            rel = entry_notes({"command": sys.executable, "args": ["server.py", "--flag", "@scope/pkg"]})
+            absolute = entry_notes({"command": sys.executable,
+                                    "args": [str(Path(tmp) / "server.py")]})
+        finally:
+            os.chdir(old)
+    assert sum("relative path" in n for n in rel) == 1, rel  # server.py only, not the flag or the package
+    assert "'server.py'" in "".join(rel), rel
+    assert not any("relative path" in n for n in absolute), absolute
+    print("notes: ok (missing command and relative script path flagged; flags, packages, absolute paths not)")
 
 
 def test_wrapped_entry_none_for_url_based_server() -> None:
@@ -72,6 +109,14 @@ def test_format_suggestions_never_touches_disk() -> None:
         fake_path = Path(tmp) / "config.json"  # never written to -- just a label
         report = format_suggestions(fake_path, servers)
         assert not fake_path.exists(), "format_suggestions must never write to disk"
+
+    # an entry's env holds API keys: they must never be printed
+    secret_report = format_suggestions(Path("config.json"), {
+        "s": {"command": "greenlight-test-not-installed", "args": [],
+              "env": {"API_KEY": "sk-super-secret-value"}},
+    })
+    assert "sk-super-secret-value" not in secret_report, "wrap printed an env secret"
+    assert "env" in secret_report, "should still tell the user to leave env alone"
 
     assert "add:" in report
     assert "remote: no \"command\" field" in report
@@ -146,6 +191,8 @@ def test_load_servers_reports_bad_json_clearly() -> None:
 
 if __name__ == "__main__":
     test_wrapped_entry_rewrites_command_and_keeps_other_fields()
+    test_command_resolved_to_full_path()
+    test_notes_for_missing_command_and_relative_paths()
     test_wrapped_entry_none_for_url_based_server()
     test_already_wrapped_detected_and_skipped()
     test_format_suggestions_never_touches_disk()

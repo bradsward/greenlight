@@ -69,6 +69,13 @@ def _tool_summaries(result: dict) -> Optional[list]:
             "description": description[:200] if isinstance(description, str) else None,
             "has_input_schema": isinstance(schema, dict),
             "input_schema_type": schema.get("type") if isinstance(schema, dict) else None,
+            # Valid JSON Schema, but the Claude API rejects these at the
+            # root of a tool's input_schema (HTTP 400), and in Claude Code
+            # one such tool can fail every request in the session.
+            "schema_combinators": [
+                k for k in ("oneOf", "anyOf", "allOf")
+                if isinstance(schema, dict) and k in schema
+            ],
         })
     return summaries
 
@@ -214,6 +221,30 @@ class ProxySession:
         }
         self._write(entry)
 
+    def record_http_error(self, status: int, reason: str, www_authenticate: Optional[str],
+                          body_snippet: str) -> None:
+        """A rejection at the HTTP layer -- 401/403 from a missing or expired
+        token, a 429, or any error whose body isn't a JSON-RPC message.
+        These never become JSON-RPC errors, so without this the trace
+        shows nothing at all (an empty-body 401 wasn't recorded) or a
+        bare 'unparsed' line with no status. Logged as a proxy_error, so
+        tail, stats and serve already surface it."""
+        message = f"HTTP {status} {reason}".strip() + " from target"
+        if status in (401, 403, 407):
+            message += " (the client sent no valid credentials, or its token expired)"
+        if www_authenticate:
+            message += f"; WWW-Authenticate: {www_authenticate[:200]}"
+        if body_snippet:
+            message += f"; body: {body_snippet[:120]}"
+        self._write({
+            "ts": time.time(),
+            "direction": "server->client",
+            "parsed": True,
+            "type": "proxy_error",
+            "http_status": status,
+            "error": {"message": message},
+        })
+
     def _write(self, entry: dict) -> None:
         # Locked, unlike the rest of this class's opportunistic locking
         # (self._lock elsewhere only guards the _pending dict). The
@@ -276,13 +307,36 @@ def run_proxy(command: list[str], session_name: Optional[str] = None,
         print("greenlight: run `greenlight tail -f` in another terminal to watch live",
               file=sys.stderr)
 
-    proc = subprocess.Popen(
-        command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=None,  # inherited -- the server's own error output isn't ours to hide
-        bufsize=0,    # no extra buffering beyond the pipe itself; latency matters here
-    )
+    try:
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=None,  # inherited -- the server's own error output isn't ours to hide
+            bufsize=0,    # no extra buffering beyond the pipe itself; latency matters here
+        )
+    except OSError as e:
+        # The most common way an MCP server "doesn't connect" is that the
+        # client launches it with a smaller PATH than a terminal has
+        # (`spawn npx ENOENT`, "Server disconnected"). Without this the
+        # user got a raw traceback; say what happened and what to do, on
+        # stderr where clients capture a server's output, and log it.
+        if isinstance(e, FileNotFoundError):
+            message = (
+                f"can't start the server: {command[0]!r} was not found. greenlight's PATH is "
+                f"{os.environ.get('PATH', '')[:300]!r}. Clients such as Claude Desktop often launch "
+                f"servers with a smaller PATH than your terminal has (they don't read your shell "
+                f"profile) -- use the full path to the executable in the client config; "
+                f"`greenlight wrap` fills it in for you"
+            )
+            code = 127
+        else:
+            message = f"can't start the server {command[0]!r}: {e}"
+            code = 126
+        print(f"greenlight: {message}", file=sys.stderr)
+        session.record_proxy_error(message)
+        session.close()
+        return code
     assert proc.stdin is not None and proc.stdout is not None
 
     # bufsize=0 makes proc.stdout a raw FileIO, and readline() on a raw

@@ -115,8 +115,39 @@ def test_slow_initialize_is_startup_not_a_slow_call() -> None:
     print("slow initialize: reported as slow-start with startup advice, not slow-call")
 
 
+def test_top_level_schema_combinator() -> None:
+    # One tool with a root-level anyOf/oneOf/allOf makes the Claude API
+    # return a 400 for the whole request, and users can't tell which tool
+    # did it. Goes through the real ProxySession.record() so the proxy's
+    # extraction is covered too, not just the lint rule.
+    from greenlight.proxy import ProxySession
+
+    def tool(name, schema):
+        return {"name": name, "description": "does a thing", "inputSchema": schema}
+
+    tools_list = {"jsonrpc": "2.0", "id": 2, "result": {"tools": [
+        tool("fine", {"type": "object", "properties": {"a": {"anyOf": [{"type": "string"}, {"type": "number"}]}}}),
+        tool("bad_any", {"type": "object", "anyOf": [{"required": ["a"]}, {"required": ["b"]}]}),
+        tool("bad_one", {"oneOf": [{"type": "object"}, {"type": "object"}], "type": "object"}),
+    ]}}
+    with tempfile.TemporaryDirectory() as tmp:
+        log = Path(tmp) / "combinator.jsonl"
+        s = ProxySession(log)
+        s.record("client->server", _msg(2, "tools/list").strip())
+        s.record("server->client", json.dumps(tools_list))
+        s.close()
+        combos = [f for f in check_session(log) if f.code == "tool-schema-combinator"]
+        flagged = sorted(next(n for n in ("bad_any", "bad_one") if repr(n) in f.message) for f in combos)
+        assert flagged == ["bad_any", "bad_one"], [f.message for f in combos]
+        assert all(f.severity == "error" for f in combos)
+        assert not any("'fine'" in f.message for f in combos), "nested anyOf is valid and must not be flagged"
+        assert cli_main(["check", str(log)]) == 1
+    print("top-level oneOf/anyOf/allOf: ok (both bad tools flagged, nested anyOf left alone)")
+
+
 if __name__ == "__main__":
     test_broken_server()
     test_clean_session()
     test_warnings_only_pass_unless_strict()
     test_slow_initialize_is_startup_not_a_slow_call()
+    test_top_level_schema_combinator()

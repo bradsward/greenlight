@@ -45,3 +45,5 @@ jobs:
       - run: python tests/test_check.py
       - run: python tests/test_log_permissions.py
       - run: python tests/test_large_message_relay.py
+      - run: python tests/test_http_rejections.py
+      - run: python tests/test_missing_command.py

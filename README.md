@@ -77,10 +77,17 @@ greenlight wrap
 
 `wrap` finds your Claude Desktop, Claude Code, Cursor, or Windsurf config
 and prints each server entry rewritten to run through Greenlight. It's
-read-only and never edits the file. Its output uses an absolute Python
-path, which also avoids the common "client can't find `uvx`/`npx` on its
-PATH" startup failure (Claude Desktop on macOS doesn't see your shell's
-PATH).
+read-only and never edits the file, and it only shows the `command` and
+`args` it changes, never your `env`.
+
+It also writes full paths: Python's, and your server's own command
+(`npx` becomes the path your terminal resolves it to). Clients often
+launch servers with a smaller PATH than your terminal has, which is where
+most `spawn npx ENOENT` / "Server disconnected" failures come from. It
+warns if a command isn't on your PATH either, or if an argument is a
+relative path the client won't be able to find. If a server still can't
+be started, `greenlight run` says why on stderr instead of dumping a
+traceback.
 
 Logs go to `~/.greenlight/sessions/`, whichever directory the client
 launched the server from. To put them somewhere else, use `--log-dir` or
@@ -125,9 +132,18 @@ Real output, abridged, from [`tests/bad_fixture_server.py`](tests/bad_fixture_se
 a server built to make these mistakes on purpose.
 
 It also flags non-object input schemas, tool names some clients reject,
-responses to ids nobody sent, and very slow calls. Errors exit non-zero,
-and so do warnings with `--strict`. `--json` gives machine-readable
-output.
+responses to ids nobody sent, and very slow calls or slow startup.
+
+Two that are worth knowing about: a **top-level `oneOf`/`anyOf`/`allOf`**
+in a tool's input schema is valid JSON Schema, but the Claude API rejects
+it with a 400, and in Claude Code a single such tool can fail every
+request in the session without saying which one. And for HTTP servers,
+a **401/403** is rejected before JSON-RPC, so a client just says "failed
+to connect"; Greenlight records the status and `WWW-Authenticate` header
+and `check` reports it.
+
+Errors exit non-zero, and so do warnings with `--strict`. `--json` gives
+machine-readable output.
 
 ### CI
 

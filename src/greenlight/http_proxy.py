@@ -38,6 +38,18 @@ from greenlight.proxy import ProxySession
 HOP_BY_HOP = {"connection", "keep-alive", "transfer-encoding", "upgrade", "content-length"}
 
 
+def _is_json_rpc(text: str) -> bool:
+    """True if `text` is a JSON-RPC message (or a batch of them), as
+    opposed to empty, HTML, plain text, or some other JSON an HTTP layer
+    returned on its own (a gateway's {"error": "unauthorized"})."""
+    try:
+        msg = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    items = msg if isinstance(msg, list) else [msg]
+    return bool(items) and all(isinstance(m, dict) and m.get("jsonrpc") for m in items)
+
+
 def _make_handler(target_url: str, session: ProxySession) -> type:
     class ProxyHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -80,7 +92,18 @@ def _make_handler(target_url: str, session: ProxySession) -> type:
                 payload = e.read()
                 if payload:
                     self.wfile.write(payload)
-                    session.record("server->client", payload.decode("utf-8", errors="replace"))
+                text = payload.decode("utf-8", errors="replace")
+                if _is_json_rpc(text):
+                    session.record("server->client", text)
+                else:
+                    # Not a JSON-RPC message (empty 401, an HTML or plain
+                    # text error page). Recording the body as an
+                    # "unparsed" line would be misleading; record the
+                    # HTTP status itself instead.
+                    session.record_http_error(
+                        e.code, e.reason or "", e.headers.get("WWW-Authenticate") if e.headers else None,
+                        " ".join(text.split()),
+                    )
                 return
             except urllib.error.URLError as e:
                 # Target unreachable (connection refused, DNS failure,

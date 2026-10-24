@@ -115,6 +115,22 @@ def check_session(path: Path) -> list[Finding]:
                 f"{req.get('method')!r} (id {req['id']!r}) never got a response from the {who}",
             ))
 
+    # --- HTTP-layer rejections (never visible as JSON-RPC errors) -----------
+    for e in entries:
+        status = e.get("http_status")
+        if status in (401, 403, 407):
+            findings.append(Finding(
+                "error", "http-auth-rejected",
+                f"target answered HTTP {status}: {e.get('error', {}).get('message', '')}. This is "
+                f"rejected before JSON-RPC, so clients usually just report 'failed to connect' -- "
+                f"check the token/credentials the client is configured with and whether it expired",
+            ))
+        elif status == 429:
+            findings.append(Finding(
+                "warning", "http-rate-limited",
+                f"target answered HTTP 429 (rate limited): {e.get('error', {}).get('message', '')}",
+            ))
+
     # --- slow calls ---------------------------------------------------------
     for e in entries:
         latency = e.get("latency_ms")
@@ -162,6 +178,15 @@ def check_session(path: Path) -> list[Finding]:
                     "error", "tool-schema-not-object",
                     f"tool {name!r} inputSchema has type {tool.get('input_schema_type')!r}; "
                     f"it must be \"object\"",
+                ))
+            if tool.get("schema_combinators"):
+                keys = "/".join(tool["schema_combinators"])
+                findings.append(Finding(
+                    "error", "tool-schema-combinator",
+                    f"tool {name!r} inputSchema has top-level {keys}. It's valid JSON Schema, but "
+                    f"the Claude API rejects it with a 400, and in Claude Code a single such tool "
+                    f"can fail every request in the session. Make the root a plain object (nested "
+                    f"{keys} is fine) and enforce the either/or rule in the tool handler",
                 ))
             if not tool.get("description"):
                 findings.append(Finding(

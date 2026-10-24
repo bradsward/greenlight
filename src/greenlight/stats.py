@@ -113,7 +113,7 @@ def format_stats(stats: dict, path: Path) -> str:
     if stats["failed"]:
         lines.append(f"  FAILED -- {stats['transport_errors']} transport error(s), "
                       f"{stats['tool_errors']} tool error(s), "
-                      f"{stats['proxy_errors']} proxy error(s, target unreachable)")
+                      f"{stats['proxy_errors']} proxy/HTTP error(s)")
         for msg in stats["failure_messages"][:5]:
             lines.append(f"    - {msg}")
         if stats["corrupted_lines"]:

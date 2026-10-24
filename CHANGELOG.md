@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.0
+
+Aimed at the failures MCP developers hit most, found by reading what
+people actually report (forum threads, Claude Code issues, debugging
+guides) rather than by guessing.
+
+- `check` now flags a **top-level `oneOf`/`anyOf`/`allOf` in a tool's input
+  schema**. It's valid JSON Schema, but the Claude API rejects it with a
+  400, and in Claude Code one such tool can fail every request in the
+  session without saying which tool did it.
+- **HTTP rejections are now visible.** A 401/403/407 (expired or missing
+  token) or any HTTP error whose body isn't a JSON-RPC message never
+  becomes a JSON-RPC error, so the trace showed nothing: an empty-body 401
+  wasn't recorded at all, and one with a body appeared as an unparsed line
+  with no status. Now recorded with the status and `WWW-Authenticate`
+  header, shown by `tail`/`stats`/`serve`, and reported by `check` as
+  `http-auth-rejected`. A JSON-RPC error that rides on a 4xx is still
+  recorded as an ordinary JSON-RPC error.
+- **A server command that can't be started now says why.** `spawn npx
+  ENOENT` / "Server disconnected" usually means the client launched the
+  server with a smaller PATH than a terminal has. `greenlight run` used to
+  end in a raw traceback; it now prints what was missing and what to do on
+  stderr (where clients capture a server's output), exits 127, and logs
+  it as a failure.
+- **`wrap` writes full paths** for your server's own command (`npx` ->
+  the path your terminal resolves it to), warns when a command isn't on
+  PATH here either, and warns about relative-path arguments a client
+  launching from its own working directory won't find.
+- Fixed: `wrap` printed the whole server entry, **including `env`, where API
+  keys live**, into the terminal. It now shows only the `command` and
+  `args` it changes and tells you to leave the rest alone.
+- The stats line for proxy errors now reads "proxy/HTTP error(s)" instead
+  of assuming the target was unreachable.
+
 ## 0.5.1
 
 - Fixed: large server responses were relayed very slowly. The server's
