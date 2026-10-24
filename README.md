@@ -11,14 +11,14 @@
 
 [![PyPI](https://img.shields.io/pypi/v/greenlight-mcp)](https://pypi.org/project/greenlight-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/greenlight-mcp)](https://pypi.org/project/greenlight-mcp/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/bradsward/greenlight/blob/master/LICENSE)
 [![tests](https://github.com/bradsward/greenlight/actions/workflows/tests.yml/badge.svg)](https://github.com/bradsward/greenlight/actions/workflows/tests.yml)
 
 Listed in [awesome-mcp-devtools](https://github.com/Epistates/awesome-mcp-devtools#development-tools).
 
 **See what your MCP server is actually doing.**
 
-![greenlight tail showing a live trace with a slow call in yellow and a failed tool call in red with its real error message, then greenlight check listing the bugs it found in a broken server](examples/demo.gif)
+![greenlight tail showing a live trace with a slow call in yellow and a failed tool call in red with its real error message, then greenlight check listing the bugs it found in a broken server](https://raw.githubusercontent.com/bradsward/greenlight/master/examples/demo.gif)
 
 When an MCP integration misbehaves, you're usually debugging blind: the
 client says a tool "failed" or quietly never calls it, and you can't see
@@ -136,9 +136,9 @@ session: examples/bad-session.jsonl
   ...
 ```
 
-Real output, abridged, from [`examples/bad-session.jsonl`](examples/bad-session.jsonl):
+Real output, abridged, from [`examples/bad-session.jsonl`](https://github.com/bradsward/greenlight/blob/master/examples/bad-session.jsonl):
 a session recorded through the proxy against
-[`tests/bad_fixture_server.py`](tests/bad_fixture_server.py), a server
+[`tests/bad_fixture_server.py`](https://github.com/bradsward/greenlight/blob/master/tests/bad_fixture_server.py), a server
 built to make these mistakes on purpose.
 
 It also flags non-object input schemas, tool names some clients reject,
@@ -154,6 +154,41 @@ and `check` reports it.
 
 Errors exit non-zero, and so do warnings with `--strict`. `--json` gives
 machine-readable output.
+
+### `--capture-payloads`: what was actually sent (opt-in)
+
+By default Greenlight records metadata only: methods, ids, timings and
+error text. It never stores your requests' arguments or the content a
+server returns, so the logs are safe to leave on. When a call fails and
+you need to see what the client really sent:
+
+```bash
+greenlight run --capture-payloads -- npx -y @some/mcp-server
+greenlight tail --payloads
+```
+
+```
+17:50:42.604  ->  tools/call
+        params: {"name":"boom","arguments":{},"_meta":{}}
+17:50:42.604  <-  tools/call                   0.81ms  FAILED (tool error): Error executing tool boom: this tool always fails, on purpose
+        args:   {"name":"boom","arguments":{},"_meta":{}}
+        result: {"content":[{"text":"Error executing tool boom: this tool always fails, on purpose","type":"text"}],"isError":true}
+```
+
+Real output. A failed result carries the arguments that caused it, under
+`args:`, next to what came back.
+
+Secrets are redacted before anything is written: values under
+secret-looking keys (`api_key`, `authorization`, `password`, `token`, ...),
+and well-known shapes like API keys, GitHub and Slack tokens, JWTs,
+private keys and `user:password@` URLs. Long base64 data, like a
+screenshot, becomes a size note, and each payload is cut at 8192
+characters (`--payload-limit`).
+
+That's best effort, not a guarantee. A secret in free text that matches
+none of those shapes gets through, so treat captured logs as sensitive.
+They're created owner-only, and the `serve` tools only include payloads
+when your agent asks for them (`include_payloads`).
 
 ### CI
 
@@ -202,6 +237,15 @@ real session. That includes the client's exact requests, which is usually
 where the bug turns out to be. It also leaves a durable log you can check
 in CI.
 
+Other proxies exist too. [mcpsnoop](https://github.com/kerlenton/mcpsnoop)
+is a Go transparent proxy with a live terminal UI and call replay, and if
+a proxy to watch and replay traffic is all you want, it's worth a look.
+Greenlight leans toward telling you what's wrong: `check` for server bugs
+and for tool schemas the Claude API rejects, HTTP 401s that never show up
+as JSON-RPC errors, the real error message from a failed tool call, and
+`serve`, so your coding agent can read the trace itself. It's a Python
+package you can run with `uvx`.
+
 ## How it works
 
 `greenlight run` spawns your server as a subprocess and relays
@@ -216,8 +260,8 @@ and Windows.
 
 ## More
 
-- [CHANGELOG.md](CHANGELOG.md): what changed in each release.
-- [`notes/`](notes/): a running engineering log of what broke, how it
+- [CHANGELOG.md](https://github.com/bradsward/greenlight/blob/master/CHANGELOG.md): what changed in each release.
+- [`notes/`](https://github.com/bradsward/greenlight/tree/master/notes): a running engineering log of what broke, how it
   was found, and why each fix is what it is.
 - Issues and PRs welcome. If Greenlight misreads a real session, the log
   file is the most useful thing you can attach.

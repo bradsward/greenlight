@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
+from rich.text import Text
 
 SLOW_MS = 500  # a successful call slower than this still gets flagged
 
@@ -54,7 +55,27 @@ def _format_entry(entry: dict) -> tuple[str, str]:
     return f"{timestamp}  {arrow}  {method:<24s} {latency_str}  ok", "green"
 
 
-def tail_file(path: Path, follow: bool = False) -> None:
+def payload_lines(entry: dict) -> list[str]:
+    """The captured content for one log entry, as labelled lines. Empty
+    unless the session was recorded with --capture-payloads."""
+    lines = []
+    is_message = entry.get("type") in ("request", "notification")
+    if entry.get("request_payload"):
+        lines.append(f"args:   {entry['request_payload']}")
+    if entry.get("payload"):
+        lines.append(f"{'params:' if is_message else 'result:':<7s} {entry['payload']}"
+                     + (" ..." if entry.get("payload_truncated") else ""))
+    return lines
+
+
+def _print_payloads(entry: dict) -> None:
+    for line in payload_lines(entry):
+        # one line each, cut at the terminal's edge: the full text is in the log
+        # no_wrap/overflow must be print() arguments: set on the Text they're ignored and it wraps
+        console.print(Text("        " + line, style="dim"), no_wrap=True, overflow="ellipsis")
+
+
+def tail_file(path: Path, follow: bool = False, show_payloads: bool = False) -> None:
     console.print(f"[bold]watching[/bold] {path}")
     console.print(f"[dim]-> client to server   <- server to client[/dim]\n")
 
@@ -75,6 +96,8 @@ def tail_file(path: Path, follow: bool = False) -> None:
                 continue
             text, style = _format_entry(entry)
             console.print(text, style=style)
+            if show_payloads:
+                _print_payloads(entry)
 
 
 def latest_session(sessions_dir: Path) -> Optional[Path]:

@@ -18,7 +18,7 @@ from typing import Optional
 from mcp.server.mcpserver import MCPServer
 
 from greenlight.check import check_session
-from greenlight.render import _format_entry, latest_session
+from greenlight.render import _format_entry, latest_session, payload_lines
 from greenlight.stats import compute_stats
 
 
@@ -89,29 +89,33 @@ def build_server(sessions: Path) -> MCPServer:
         return compute_stats(_resolve_session(session, sessions))
 
     @server.tool()
-    def get_failures(session: Optional[str] = None, limit: int = 10) -> list[dict]:
+    def get_failures(session: Optional[str] = None, limit: int = 10,
+                     include_payloads: bool = False) -> list[dict]:
         """The actual failures from a session, most recent first -- transport-level JSON-RPC
         errors, tool-level failures (with the real error message the tool itself gave, not
         just a flag), and proxy errors (target unreachable). This is the direct answer to
-        "what broke and why", without having to read the raw trace."""
+        "what broke and why", without having to read the raw trace. Set include_payloads to
+        also get the arguments that were sent and the result that came back, if the session
+        was recorded with `greenlight run --capture-payloads` (secrets are redacted)."""
         entries = _read_entries(_resolve_session(session, sessions))
         failures = []
+
+        def add(e: dict, kind: str, message: Optional[str]) -> None:
+            failure = {"ts": e["ts"], "method": e.get("method"), "kind": kind, "message": message}
+            if include_payloads:
+                if e.get("request_payload"):
+                    failure["arguments"] = e["request_payload"]
+                if e.get("payload"):
+                    failure["result"] = e["payload"]
+            failures.append(failure)
+
         for e in entries:
             if e.get("type") == "error":
-                failures.append({
-                    "ts": e["ts"], "method": e.get("method"), "kind": "transport_error",
-                    "message": e.get("error", {}).get("message"),
-                })
+                add(e, "transport_error", e.get("error", {}).get("message"))
             elif e.get("tool_error"):
-                failures.append({
-                    "ts": e["ts"], "method": e.get("method"), "kind": "tool_error",
-                    "message": e.get("tool_error_message"),
-                })
+                add(e, "tool_error", e.get("tool_error_message"))
             elif e.get("type") == "proxy_error":
-                failures.append({
-                    "ts": e["ts"], "method": e.get("method"), "kind": "proxy_error",
-                    "message": e.get("error", {}).get("message"),
-                })
+                add(e, "proxy_error", e.get("error", {}).get("message"))
         failures.sort(key=lambda f: f["ts"], reverse=True)
         return failures[:limit]
 
@@ -123,11 +127,18 @@ def build_server(sessions: Path) -> MCPServer:
         return [vars(f) for f in check_session(_resolve_session(session, sessions))]
 
     @server.tool()
-    def get_trace(session: Optional[str] = None, limit: int = 50) -> list[str]:
+    def get_trace(session: Optional[str] = None, limit: int = 50,
+                  include_payloads: bool = False) -> list[str]:
         """The last N formatted trace lines from a session -- the same text `greenlight tail`
-        prints, plain text (no color codes). Defaults to the most recent session."""
+        prints, plain text (no color codes). Defaults to the most recent session. Set
+        include_payloads to add the captured request/response content under each line (only
+        present if the session was recorded with `greenlight run --capture-payloads`)."""
         entries = _read_entries(_resolve_session(session, sessions))
-        lines = [_format_entry(e)[0] for e in entries]
+        lines = []
+        for e in entries:
+            lines.append(_format_entry(e)[0])
+            if include_payloads:
+                lines.extend("    " + extra for extra in payload_lines(e))
         return lines[-limit:]
 
     return server

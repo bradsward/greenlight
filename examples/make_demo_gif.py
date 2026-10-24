@@ -53,7 +53,7 @@ TITLEBAR = (22, 27, 34)
 BORDER = (48, 54, 61)
 FG = (230, 237, 243)
 DIM = (125, 133, 144)
-RED, YELLOW, GREEN = (255, 123, 114), (227, 179, 65), (63, 185, 80)
+RED, YELLOW, GREEN = (255, 123, 114), (227, 179, 65), (86, 211, 100)
 BLUE, MAGENTA, CYAN = (121, 192, 255), (210, 168, 255), (86, 212, 221)
 PROMPT = (121, 192, 255)
 CURSOR = (201, 209, 217)
@@ -233,6 +233,51 @@ class Renderer:
         return img.resize((self.size[0] // S, self.size[1] // S), Image.LANCZOS)
 
 
+def _blend(a: tuple, b: tuple, t: float) -> tuple:
+    return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
+
+
+def build_palette() -> Image.Image:
+    """Every color the frames use, plus a ramp of anti-aliasing shades
+    between each text color and the surface it's drawn on."""
+    colors: list[tuple] = [OUTER, WINDOW, TITLEBAR, BORDER, CURSOR]
+    for text_color in (FG, DIM, RED, YELLOW, GREEN, BLUE, MAGENTA, CYAN):
+        colors += [_blend(WINDOW, text_color, k / 9) for k in range(1, 10)]
+    colors += [_blend(TITLEBAR, DIM, k / 7) for k in range(1, 8)]
+    for dot in ((255, 95, 86), (255, 189, 46), (39, 201, 63)):
+        colors += [dot] + [_blend(TITLEBAR, dot, k / 5) for k in range(1, 5)]
+    for a, b in ((OUTER, BORDER), (BORDER, TITLEBAR), (BORDER, WINDOW), (OUTER, TITLEBAR),
+                 (WINDOW, CURSOR)):
+        colors += [_blend(a, b, k / 5) for k in range(1, 5)]
+    unique = list(dict.fromkeys(colors))
+    assert len(unique) <= 256, len(unique)
+    flat = [c for rgb in unique for c in rgb]
+    flat += list(unique[-1]) * (256 - len(unique))
+    pal = Image.new("P", (1, 1))
+    pal.putpalette(flat)
+    return pal
+
+
+def verify_colors_survived(path: Path) -> None:
+    """Reopen the finished GIF and make sure the colors that carry meaning
+    (green ok, yellow slow, red failed) are really in it, not just in the
+    frames before they were squeezed into a GIF palette."""
+    wanted = {"green": GREEN, "yellow": YELLOW, "red": RED}
+    found = dict.fromkeys(wanted, 0)
+    with Image.open(path) as gif:
+        for i in range(gif.n_frames):
+            gif.seek(i)
+            rgb = gif.convert("RGB")
+            counts = rgb.getcolors(maxcolors=1 << 20) or []
+            for name, target in wanted.items():
+                near = sum(n for n, c in counts if sum((a - b) ** 2 for a, b in zip(c, target)) <= 30 ** 2)
+                found[name] = max(found[name], near)
+    missing = [n for n, px in found.items() if px < 150]
+    if missing:
+        sys.exit(f"colors didn't survive into the GIF: {missing} (best pixel counts: {found})")
+    print(f"colors survived into the GIF: {found}")
+
+
 def prompt_line(typed: str) -> list[Run]:
     return [("$ ", PROMPT, True), (typed, FG, False)]
 
@@ -285,16 +330,16 @@ def main() -> None:
     check_scene = build_scene(r, "greenlight check examples/bad-session.jsonl", check_groups, check_pause)
     frames = tail_scene + check_scene
 
-    # one shared palette for every frame (built from each scene's last frame,
-    # which together contain every color used): no flicker, small file
-    w, h = frames[0][0].size
-    palette_src = Image.new("RGB", (w, h * 2))
-    palette_src.paste(tail_scene[-1][0], (0, 0))
-    palette_src.paste(check_scene[-1][0], (0, h))
-    palette = palette_src.quantize(colors=48, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    # One shared, hand-built palette. Letting the quantizer choose one looked
+    # fine in the RGB frames and wrecked the file: it spent its colors on
+    # near-black background shades, and the green, yellow and red text
+    # collapsed into muddy blends (the first version read like a
+    # colorblind filter).
+    palette = build_palette()
     quantized = [f.quantize(palette=palette, dither=Image.Dither.NONE) for f, _ in frames]
     quantized[0].save(out, save_all=True, append_images=quantized[1:], duration=[ms for _, ms in frames],
                       loop=0, optimize=True, disposal=1)
+    verify_colors_survived(out)
     print(f"{out}: {len(frames)} frames, {frames[0][0].size[0]}x{frames[0][0].size[1]}, "
           f"{out.stat().st_size / 1024:.0f} KB, {sum(ms for _, ms in frames) / 1000:.1f}s loop")
 

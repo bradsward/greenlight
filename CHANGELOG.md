@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.0
+
+- Added **`greenlight run --capture-payloads`**, opt-in: record what the
+  client sent and what came back, so a failed call shows the arguments that
+  caused it (`greenlight tail --payloads`). This was the biggest gap: the log
+  said *that* a call failed and how long it took, never *what was sent*. It
+  stays off by default, because until now a log held metadata only and was
+  safe to leave running. With the flag on, a failed result carries the
+  arguments that caused it (`args:`) next to what came back, and the `serve`
+  tools return payloads only when the agent asks (`include_payloads`).
+  Each payload is cut at 8192 characters (`--payload-limit`).
+- Secrets are **redacted before anything is written**, not after: values
+  under secret-looking keys (`api_key`, `authorization`, `password`,
+  `token`, ...), well-known shapes (API keys, GitHub/Slack tokens, JWTs,
+  AWS key ids, private keys, `user:password@` URLs), and long base64 data
+  (a screenshot becomes a size note). Best effort, and documented as such:
+  a secret in free text that matches none of those gets through. Checked on
+  the raw log file, not just parsed fields, with a property test that a
+  secret planted under a secret-looking key never survives.
+- The same redaction now covers what greenlight always recorded: error
+  messages, tool error text, and the raw text of non-JSON lines a server
+  prints to stdout. A server that echoes a credential in an error no longer
+  puts it in the log.
+- Fixed: the README demo's greens, yellows and reds were washed out
+  (the GIF's palette was spent on background shades), and the PyPI page
+  showed a broken image and five dead links because the README used
+  relative paths. Both fixed; the demo build now checks that its colors
+  survive into the file.
+
 ## 0.6.0
 
 Aimed at the failures MCP developers hit most, found by reading what

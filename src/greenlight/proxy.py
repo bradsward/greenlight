@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from greenlight.paths import ENV_VAR, sessions_dir
+from greenlight.redact import redact, redact_text, to_payload
 
 
 def _tool_error_text(result: dict) -> str:
@@ -84,6 +85,8 @@ def _tool_summaries(result: dict) -> Optional[list]:
 class _PendingRequest:
     method: str
     sent_at: float
+    # redacted, truncated params -- only filled in with --capture-payloads
+    params_payload: Optional[str] = None
 
 
 class ProxySession:
@@ -93,8 +96,14 @@ class ProxySession:
     known even on the response side, where the raw JSON-RPC message
     alone doesn't carry the method."""
 
-    def __init__(self, log_path: Path):
+    def __init__(self, log_path: Path, capture_payloads: bool = False, payload_limit: int = 8192):
         self.log_path = log_path
+        # Off by default: a log of metadata only is safe to leave running.
+        # On, requests' params and results' content are logged too, with
+        # secrets redacted first (see redact.py -- best effort) and each
+        # cut to payload_limit characters.
+        self.capture_payloads = capture_payloads
+        self.payload_limit = payload_limit
         self._pending: dict[object, _PendingRequest] = {}
         self._lock = threading.Lock()
         # A proxy that can't write its log must still relay. The user put
@@ -135,7 +144,7 @@ class ProxySession:
             # writes). Relay already happened upstream of this function --
             # log it as unparsed rather than dropping it or crashing.
             entry["parsed"] = False
-            entry["raw"] = line[:500]
+            entry["raw"] = redact_text(line[:2000])[:500]
             self._write(entry)
             return
 
@@ -153,7 +162,7 @@ class ProxySession:
             # it's not a usable JSON-RPC message either way, logged as
             # such rather than crashing or vanishing.
             entry["parsed"] = False
-            entry["raw"] = line[:500]
+            entry["raw"] = redact_text(line[:2000])[:500]
             self._write(entry)
             return
 
@@ -169,9 +178,13 @@ class ProxySession:
         if method is not None:
             entry["type"] = "request" if msg_id is not None else "notification"
             entry["method"] = method
+            params_payload = None
+            if self.capture_payloads and msg.get("params") is not None:
+                params_payload = self._attach_payload(entry, "payload", msg["params"])
             if msg_id is not None:
                 with self._lock:
-                    self._pending[msg_id] = _PendingRequest(method=method, sent_at=ts)
+                    self._pending[msg_id] = _PendingRequest(
+                        method=method, sent_at=ts, params_payload=params_payload)
         else:
             entry["type"] = "error" if "error" in msg else "result"
             pending = None
@@ -185,8 +198,16 @@ class ProxySession:
                     tools = _tool_summaries(msg["result"])
                     if tools is not None:
                         entry["tools"] = tools
+            if self.capture_payloads:
+                # What the client sent, next to what came back: the answer
+                # to "what arguments made this call fail?"
+                if pending is not None and pending.params_payload is not None:
+                    entry["request_payload"] = pending.params_payload
+                if "result" in msg:
+                    self._attach_payload(entry, "payload", msg["result"])
             if "error" in msg:
-                entry["error"] = msg["error"]
+                # server-supplied text; can carry a credential it echoed back
+                entry["error"] = redact(msg["error"])
             elif isinstance(msg.get("result"), dict) and msg["result"].get("isError"):
                 # MCP nests tool-execution failures inside a normal JSON-RPC
                 # "result" (isError: true), separate from transport-level
@@ -200,9 +221,16 @@ class ProxySession:
                 entry["tool_error"] = True
                 text = _tool_error_text(msg["result"])
                 if text:
-                    entry["tool_error_message"] = text[:500]
+                    entry["tool_error_message"] = redact_text(text[:2000])[:500]
 
         self._write(entry)
+
+    def _attach_payload(self, entry: dict, key: str, value: object) -> str:
+        text, truncated = to_payload(value, self.payload_limit)
+        entry[key] = text
+        if truncated:
+            entry["payload_truncated"] = True
+        return text
 
     def record_proxy_error(self, message: str) -> None:
         """For failures where no JSON-RPC response ever came back at all
@@ -296,14 +324,21 @@ def _pump(src, dst, on_line: Callable[[str], None], close_dst: bool = False) -> 
             pass
 
 
+PAYLOAD_NOTICE = ("greenlight: capturing request and response CONTENT (secrets redacted, best effort); "
+                  "keep these logs private")
+
+
 def run_proxy(command: list[str], session_name: Optional[str] = None,
-              log_dir: Optional[str] = None) -> int:
+              log_dir: Optional[str] = None, capture_payloads: bool = False,
+              payload_limit: int = 8192) -> int:
     name = session_name or (Path(command[0]).stem if command else "session")
     log_path = sessions_dir(log_dir) / f"{name}-{int(time.time())}-{uuid.uuid4().hex[:6]}.jsonl"
-    session = ProxySession(log_path)
+    session = ProxySession(log_path, capture_payloads=capture_payloads, payload_limit=payload_limit)
 
     if session.recording:
         print(f"greenlight: recording to {log_path}", file=sys.stderr)
+        if capture_payloads:
+            print(PAYLOAD_NOTICE, file=sys.stderr)
         print("greenlight: run `greenlight tail -f` in another terminal to watch live",
               file=sys.stderr)
 

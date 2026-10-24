@@ -228,10 +228,11 @@ def consume_sse_buffer(buffer: bytes, chunk: bytes) -> tuple[list[str], bytes]:
 
 
 def run_http_proxy(target_url: str, port: int = 8808, session_name: Optional[str] = None,
-                   log_dir: Optional[str] = None) -> int:
+                   log_dir: Optional[str] = None, capture_payloads: bool = False,
+                   payload_limit: int = 8192) -> int:
     name = session_name or "http-session"
     log_path = sessions_dir(log_dir) / f"{name}-{int(time.time())}-{uuid.uuid4().hex[:6]}.jsonl"
-    session = ProxySession(log_path)
+    session = ProxySession(log_path, capture_payloads=capture_payloads, payload_limit=payload_limit)
 
     handler = _make_handler(target_url, session)
     server = ThreadingHTTPServer(("127.0.0.1", port), handler)
@@ -247,6 +248,9 @@ def run_http_proxy(target_url: str, port: int = 8808, session_name: Optional[str
     print(f"greenlight: proxying {local_url} -> {target_url}", file=sys.stderr)
     if session.recording:
         print(f"greenlight: recording to {log_path}", file=sys.stderr)
+        if capture_payloads:
+            print("greenlight: capturing request and response CONTENT (secrets redacted, best "
+                  "effort); keep these logs private", file=sys.stderr)
     print(f"greenlight: point your MCP client at {local_url} instead of {target_url}", file=sys.stderr)
 
     try:

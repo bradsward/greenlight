@@ -62,6 +62,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     run_p.add_argument("--name", default=None, help="session name (defaults to the command's name)")
     run_p.add_argument("--log-dir", default=None, help=log_dir_help)
     run_p.add_argument(
+        "--capture-payloads", action="store_true",
+        help="also record request params and result content, so you can see what was sent when a "
+             "call fails. Off by default: logs then hold metadata only. Secrets are redacted "
+             "before anything is written, but redaction is best effort -- keep these logs private",
+    )
+    run_p.add_argument(
+        "--payload-limit", type=int, default=8192, metavar="CHARS",
+        help="cut each captured payload to this many characters (default: 8192)",
+    )
+    run_p.add_argument(
         "--http", default=None, metavar="URL",
         help="proxy a Streamable HTTP MCP server at this URL instead of spawning a stdio process "
              "-- point your client at the local URL greenlight prints, not this one",
@@ -84,6 +94,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="session log to view (defaults to the most recent one)",
     )
     tail_p.add_argument("--log-dir", default=None, help=log_dir_help)
+    tail_p.add_argument(
+        "-p", "--payloads", action="store_true",
+        help="show captured request/response content under each line (needs a session recorded "
+             "with `greenlight run --capture-payloads`)",
+    )
     tail_p.add_argument(
         "-f", "--follow", action="store_true",
         help="keep watching for new messages, like `tail -f` (use this while a session is still running)",
@@ -144,7 +159,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.cmd == "run":
         if args.http:
             return run_http_proxy(args.http, port=args.port, session_name=args.name,
-                                  log_dir=args.log_dir)
+                                  log_dir=args.log_dir, capture_payloads=args.capture_payloads,
+                                  payload_limit=args.payload_limit)
         command = list(args.command)
         if command and command[0] == "--":
             command = command[1:]
@@ -153,14 +169,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "no server command given -- e.g. `greenlight run -- npx -y @some/mcp-server`, "
                 "or `greenlight run --http <url>` for a Streamable HTTP server"
             )
-        return run_proxy(_resolve(command), session_name=args.name, log_dir=args.log_dir)
+        return run_proxy(_resolve(command), session_name=args.name, log_dir=args.log_dir,
+                         capture_payloads=args.capture_payloads, payload_limit=args.payload_limit)
 
     if args.cmd == "tail":
         path = _pick_session(parser, args)
         if not path.exists():
             parser.error(f"no such file: {path}")
         print_banner(Console())
-        tail_file(path, follow=args.follow)
+        tail_file(path, follow=args.follow, show_payloads=args.payloads)
         return 0
 
     if args.cmd == "stats":
